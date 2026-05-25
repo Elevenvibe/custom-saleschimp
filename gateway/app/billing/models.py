@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from typing import Any
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -10,6 +12,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -37,6 +40,11 @@ class CostProvider(Base):
     currency: Mapped[str] = mapped_column(String(8), nullable=False, server_default="USD")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Encrypted via app.email.crypto.encrypt_dict — usually {"api_key": "..."}
+    # plus any provider-specific extras (region, project_id). NULL = not configured.
+    credentials_encrypted: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

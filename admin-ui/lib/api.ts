@@ -166,10 +166,11 @@ export type CostProviderPrice = {
   notes: string | null;
 };
 
+export type IntegratedModelPrice = { unit: PriceUnit; price_micros: number };
 export type IntegratedModel = {
   variant: string;
   label: string;
-  suggested_unit: PriceUnit;
+  prices: IntegratedModelPrice[];
 };
 
 export type IntegratedProvider = {
@@ -180,6 +181,26 @@ export type IntegratedProvider = {
 };
 
 export type IntegratedCatalog = Record<ProviderKind, IntegratedProvider[]>;
+
+export type AvailableModel = {
+  variant: string;
+  label: string | null;
+  source: "live" | "catalog";
+};
+
+export type AvailableModelsRes = {
+  source: "live" | "catalog";
+  models: AvailableModel[];
+  notes: string | null;
+};
+
+export type SyncPricesRes = {
+  upserted: number;
+  skipped: number;
+  notes: string | null;
+};
+
+export type CredentialsStatus = { configured: boolean };
 
 export type MarkupRule = {
   id: number;
