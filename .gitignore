@@ -1,0 +1,42 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Secrets / certs
+certs/
+*.pem
+*.key
+*.crt
+
+# Generated at deploy time
+nginx-generated/
+coturn-generated/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node / build artifacts (in case anyone runs ui locally outside docker)
+node_modules/
+.next/
+dist/
+build/
+
+# Python (in case api is run locally)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker volumes if ever mounted locally
+postgres_data/
+redis_data/
+minio-data/

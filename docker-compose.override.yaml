@@ -1,0 +1,19 @@
+# Customization layer. Docker Compose auto-merges this on top of
+# docker-compose.yaml whenever you run `docker compose ...` from this folder.
+#
+# To run the upstream stack without any customizations:
+#   docker compose -f docker-compose.yaml up -d
+# To run with customizations (default):
+#   docker compose up -d
+
+services:
+  ui:
+    # Override the upstream image with a locally-built one that bakes in
+    # custom/ui/public/ overlays. The UPSTREAM_TAG build arg should match
+    # the dograh/ submodule pin (see scripts/update-dograh.sh).
+    image: custom-saleschimp/dograh-ui:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+      args:
+        UPSTREAM_TAG: dograh-v1.31.0
