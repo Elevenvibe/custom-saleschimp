@@ -1,0 +1,57 @@
+{% extends "_base.html" %}
+{% block title %}Sign in — SalesChimp{% endblock %}
+{% block body %}
+  <h1>Sign in to SalesChimp</h1>
+  <p class="muted">Use the email + password you set when signing up or accepting an invite.</p>
+
+  <form id="f">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username" required>
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+    <button id="submit" type="submit">Sign in</button>
+    <div id="out"></div>
+  </form>
+
+  <p class="muted" style="margin-top: 18px;">
+    No account yet? <a href="/signup">Create one</a>.
+  </p>
+
+  <script>
+    const form = document.getElementById('f');
+    const btn = document.getElementById('submit');
+    const out = document.getElementById('out');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      out.innerHTML = '';
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+      try {
+        const fd = new FormData(form);
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: fd.get('email'),
+            password: fd.get('password'),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          out.innerHTML = '<div class="err">' + (data.detail || res.statusText) + '</div>';
+          return;
+        }
+        localStorage.setItem('sc_customer_token', data.access_token);
+        out.innerHTML = '<div class="ok">Signed in — redirecting…</div>';
+        setTimeout(() => { window.location.replace(data.redirect || '/'); }, 500);
+      } catch (err) {
+        out.innerHTML = '<div class="err">' + err.message + '</div>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+      }
+    });
+  </script>
+{% endblock %}
