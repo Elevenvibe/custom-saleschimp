@@ -41,5 +41,13 @@ class Settings(BaseSettings):
     # CORS allowlist for the admin UI. Comma-separated origins.
     admin_cors_origins: str = "http://localhost:3020,https://admin.mysaleschimp.com"
 
+    # Public URL where the gateway is reachable from the user's browser. Used
+    # to build verification + invite links in outgoing emails.
+    public_base_url: str = "http://localhost:8080"
+
+    # Where the verify endpoint sends the user after successful verification.
+    # In P1.A this just lands them on the Dograh UI through the gateway proxy.
+    post_verify_redirect: str = "/"
+
 
 settings = Settings()

@@ -17,6 +17,39 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
+def issue_customer_token(
+    *,
+    dograh_user_id: int,
+    email: str,
+    org_id: int,
+    role: str,
+    plugins: list[str] | None = None,
+    tier: str | None = None,
+) -> tuple[str, int]:
+    """Mint an augmented JWT for an org-side user.
+
+    Dograh only reads sub/email/exp — `sub` must match a real Dograh user id
+    so its routes recognize the session. The extra claims (tenant_kind,
+    org_id, role, tier, plugins) are read by gateway middleware for
+    entitlement checks; Dograh ignores them.
+    """
+    expiry = datetime.now(UTC) + timedelta(hours=settings.jwt_expiry_hours)
+    payload = {
+        "sub": str(dograh_user_id),
+        "email": email,
+        "exp": expiry,
+        "iat": datetime.now(UTC),
+        "tenant_kind": "customer",
+        "org_id": org_id,
+        "role": role,
+        "tier": tier,
+        "plugins": plugins or [],
+        "scopes": [f"tenant:{role}"],
+    }
+    token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return token, int(settings.jwt_expiry_hours * 3600)
+
+
 def issue_super_admin_token(user: PlatformUser) -> tuple[str, int]:
     """Mint an augmented JWT for a platform user.
 
