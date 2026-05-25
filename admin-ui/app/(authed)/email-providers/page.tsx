@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type EmailProvider } from "@/lib/api";
-import { PageHeader } from "@/components/PageHeader";
+import { PageDescription, PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProviderDialog } from "@/components/email-providers/ProviderDialog";
@@ -36,10 +36,12 @@ export default function EmailProvidersPage() {
     <>
       <PageHeader
         title="Email providers"
-        description="Platform default + per-tenant overrides. Secrets stored encrypted with Fernet."
         action={<Button onClick={() => setEditing("new")}>Configure provider</Button>}
       />
       <div className="p-8 space-y-4">
+        <PageDescription>
+          Platform default + per-tenant overrides. Secrets stored encrypted with Fernet.
+        </PageDescription>
         {error && (
           <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}

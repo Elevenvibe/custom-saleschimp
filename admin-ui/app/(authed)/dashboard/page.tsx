@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type Dashboard } from "@/lib/api";
-import { PageHeader } from "@/components/PageHeader";
+import { PageDescription, PageHeader } from "@/components/PageHeader";
 
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -14,8 +14,9 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageHeader title="Dashboard" description="Platform-wide snapshot" />
+      <PageHeader title="Dashboard" />
       <div className="p-8 space-y-6">
+        <PageDescription>Platform-wide snapshot</PageDescription>
         {error && (
           <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}

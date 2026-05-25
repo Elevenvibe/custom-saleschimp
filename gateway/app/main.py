@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import models as _models  # noqa: F401
 from app.admin.routes import router as admin_router
 from app.auth.bootstrap import bootstrap_super_admin_if_needed
+from app.customer_auth.bootstrap import bootstrap_demo_tenant_if_needed
 from app.auth.routes import router as auth_router
 from app.config import settings
 from app.customer_auth.invites import public_router as invites_public_router
@@ -39,6 +40,7 @@ log = structlog.get_logger()
 async def lifespan(_: FastAPI):
     log.info("gateway.start", env=settings.environment)
     await bootstrap_super_admin_if_needed()
+    await bootstrap_demo_tenant_if_needed()
     yield
     log.info("gateway.stop")
 

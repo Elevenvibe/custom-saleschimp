@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type AuditRow } from "@/lib/api";
-import { PageHeader } from "@/components/PageHeader";
+import { PageDescription, PageHeader } from "@/components/PageHeader";
 
 type AuditRes = { total: number; items: AuditRow[] };
 
@@ -22,8 +22,9 @@ export default function AuditPage() {
 
   return (
     <>
-      <PageHeader title="Audit log" description="All platform actions, newest first" />
+      <PageHeader title="Audit log" />
       <div className="p-8 space-y-4">
+        <PageDescription>All platform actions, newest first.</PageDescription>
         <div className="flex gap-3">
           <select className="input max-w-xs" value={filterActorKind} onChange={(e) => setFilterActorKind(e.target.value)}>
             <option value="">All actor kinds</option>

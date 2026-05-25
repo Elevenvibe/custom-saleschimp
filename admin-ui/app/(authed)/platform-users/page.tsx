@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type PlatformUser } from "@/lib/api";
-import { PageHeader } from "@/components/PageHeader";
+import { PageDescription, PageHeader } from "@/components/PageHeader";
 
 export default function PlatformUsersPage() {
   const [users, setUsers] = useState<PlatformUser[] | null>(null);
@@ -18,10 +18,10 @@ export default function PlatformUsersPage() {
     <>
       <PageHeader
         title="Platform users"
-        description="Super-admins and staff that operate the SalesChimp platform"
         action={<button className="btn-primary" onClick={() => setShowNew(true)}>Add user</button>}
       />
-      <div className="p-8">
+      <div className="p-8 space-y-4">
+        <PageDescription>Super-admins and staff that operate the SalesChimp platform.</PageDescription>
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         <div className="card overflow-hidden">
           <table className="w-full text-sm">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type InstalledPlugin } from "@/lib/api";
-import { PageHeader } from "@/components/PageHeader";
+import { PageDescription, PageHeader } from "@/components/PageHeader";
 
 export default function PluginsPage() {
   const [plugins, setPlugins] = useState<InstalledPlugin[] | null>(null);
@@ -12,11 +12,11 @@ export default function PluginsPage() {
   }, []);
   return (
     <>
-      <PageHeader
-        title="Plugins"
-        description="WordPress-style add-ons that extend Dograh. Drop plugin folders into plugins/ and register here."
-      />
+      <PageHeader title="Plugins" />
       <div className="p-8 space-y-4">
+        <PageDescription>
+          WordPress-style add-ons that extend Dograh. Drop plugin folders into <code className="font-mono">plugins/</code> and register here.
+        </PageDescription>
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Plugin runtime ships in P3 (plugin discovery, backend orchestration, UI slot injection).
           For now this page lists rows in <code className="font-mono">installed_plugins</code> — empty until P3.

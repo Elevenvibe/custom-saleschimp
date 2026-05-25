@@ -11,16 +11,14 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export function PageHeader({
   title,
-  description,
   action,
 }: {
   title: string;
-  description?: string;
   action?: React.ReactNode;
 }) {
   return (
-    <header className="flex shrink-0 flex-col gap-1 border-b bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-      <div className="flex h-14 items-center gap-2 px-4">
+    <header className="flex shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+      <div className="flex h-14 w-full items-center gap-2 px-4">
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-auto" />
         <Breadcrumb>
@@ -32,9 +30,10 @@ export function PageHeader({
         </Breadcrumb>
         <div className="ml-auto">{action}</div>
       </div>
-      {description && (
-        <div className="px-6 pb-3 text-sm text-muted-foreground">{description}</div>
-      )}
     </header>
   );
+}
+
+export function PageDescription({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-muted-foreground">{children}</p>;
 }

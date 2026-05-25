@@ -58,6 +58,12 @@ services:
       # gateway creates the initial super-admin. Rotate via admin UI after.
       GATEWAY_BOOTSTRAP_SUPER_ADMIN_EMAIL: "${GATEWAY_BOOTSTRAP_SUPER_ADMIN_EMAIL:-}"
       GATEWAY_BOOTSTRAP_SUPER_ADMIN_PASSWORD: "${GATEWAY_BOOTSTRAP_SUPER_ADMIN_PASSWORD:-}"
+      # Optional demo customer tenant — handy for local dev so the customer
+      # app at :3030 has a working login. All four must be set or skipped.
+      GATEWAY_BOOTSTRAP_DEMO_TENANT_EMAIL: "${GATEWAY_BOOTSTRAP_DEMO_TENANT_EMAIL:-}"
+      GATEWAY_BOOTSTRAP_DEMO_TENANT_PASSWORD: "${GATEWAY_BOOTSTRAP_DEMO_TENANT_PASSWORD:-}"
+      GATEWAY_BOOTSTRAP_DEMO_TENANT_FULL_NAME: "${GATEWAY_BOOTSTRAP_DEMO_TENANT_FULL_NAME:-}"
+      GATEWAY_BOOTSTRAP_DEMO_TENANT_COMPANY_NAME: "${GATEWAY_BOOTSTRAP_DEMO_TENANT_COMPANY_NAME:-}"
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8080"
     depends_on:

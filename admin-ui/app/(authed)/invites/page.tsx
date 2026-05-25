@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { api, type AdminInvite, type AdminInvitesRes } from "@/lib/api";
-import { PageHeader } from "@/components/PageHeader";
+import { PageDescription, PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,11 +42,9 @@ export default function InvitesPage() {
 
   return (
     <>
-      <PageHeader
-        title="Invites"
-        description="Every invite across every tenant. Revoke ones that look wrong."
-      />
+      <PageHeader title="Invites" />
       <div className="p-8 space-y-4">
+        <PageDescription>Every invite across every tenant. Revoke ones that look wrong.</PageDescription>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Filter:</span>
           <Select value={state} onValueChange={(v) => setState(v as StateFilter)}>

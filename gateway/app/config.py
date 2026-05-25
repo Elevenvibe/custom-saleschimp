@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     bootstrap_super_admin_email: str | None = None
     bootstrap_super_admin_password: str | None = None
 
+    # Bootstrap a demo customer tenant on startup if it doesn't already exist.
+    # All four fields must be set; otherwise the bootstrap is skipped. Useful
+    # for local dev so the customer app at :3030 has a working login out of
+    # the box. Intended for non-production environments.
+    bootstrap_demo_tenant_email: str | None = None
+    bootstrap_demo_tenant_password: str | None = None
+    bootstrap_demo_tenant_full_name: str | None = None
+    bootstrap_demo_tenant_company_name: str | None = None
+
     # Reverse proxy timeouts (seconds).
     proxy_connect_timeout: float = 5.0
     proxy_read_timeout: float = 60.0

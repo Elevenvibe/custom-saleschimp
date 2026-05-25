@@ -5,18 +5,22 @@ problem ones. Tenant-side invite management (create/list-own/revoke-own)
 lives in customer_auth/invites.py.
 """
 
-from datetime import UTC, datetime
+import hashlib
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
+from app.auth.tokens import issue as issue_token
+from app.customer_auth.invites import INVITE_TTL_SECONDS, _build_accept_url
 from app.db import get_session
-from app.tenants.models import Invite, Tenant
+from app.email.service import send_template
+from app.tenants.models import Invite, Tenant, TenantMember
 
 router = APIRouter(prefix="/invites", tags=["admin:invites"])
 
@@ -105,6 +109,125 @@ async def list_invites(
         total=total,
         items=[_row(invite, tenant) for invite, tenant in rows],
     )
+
+
+class CreateInviteIn(BaseModel):
+    tenant_id: int
+    email: EmailStr
+    role: str = Field(default="org_member", pattern="^(org_admin|org_member)$")
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_invite(
+    body: CreateInviteIn,
+    request: Request,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Super-admin creates an invite on a tenant's behalf.
+
+    Mirrors customer_auth/invites.create_invite but doesn't require an
+    org-admin caller — useful when onboarding or recovering an org.
+    """
+    tenant = await session.get(Tenant, body.tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+    if tenant.dograh_org_id is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "tenant not provisioned yet (no dograh_org_id) — owner must verify first",
+        )
+
+    email = body.email.lower()
+
+    member_exists = (
+        await session.execute(
+            select(TenantMember.id)
+            .where(TenantMember.tenant_id == body.tenant_id)
+            .where(TenantMember.email == email)
+        )
+    ).first()
+    if member_exists is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "email is already a member")
+
+    now = datetime.now(UTC)
+    existing = (
+        await session.execute(
+            select(Invite)
+            .where(Invite.tenant_id == body.tenant_id)
+            .where(Invite.email == email)
+            .where(Invite.accepted_at.is_(None))
+        )
+    ).scalars().first()
+
+    raw_token = issue_token(
+        {"purpose": "invite", "tenant_id": body.tenant_id, "email": email},
+        ttl_seconds=INVITE_TTL_SECONDS,
+    )
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+    if existing is None:
+        invite = Invite(
+            tenant_id=body.tenant_id,
+            email=email,
+            role=body.role,
+            token_hash=token_hash,
+            expires_at=now + timedelta(seconds=INVITE_TTL_SECONDS),
+            invited_by_user_id=None,  # platform-issued; no tenant-side actor
+        )
+        session.add(invite)
+        await session.flush()
+    else:
+        invite = existing
+        invite.role = body.role
+        invite.token_hash = token_hash
+        invite.expires_at = now + timedelta(seconds=INVITE_TTL_SECONDS)
+
+    await send_template(
+        session,
+        tenant_id=body.tenant_id,
+        to=[email],
+        subject=f"You're invited to {tenant.name} on SalesChimp",
+        template="invite",
+        context={
+            "inviter_email": claims.get("email"),
+            "tenant_name": tenant.name,
+            "role": body.role,
+            "accept_url": _build_accept_url(raw_token),
+            "ttl_days": INVITE_TTL_SECONDS // 86400,
+            "product_name": "SalesChimp",
+        },
+    )
+
+    actor_id: int | None = None
+    sub = claims.get("sub", "")
+    if sub.startswith("p_"):
+        try:
+            actor_id = int(sub[2:])
+        except ValueError:
+            actor_id = None
+
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=actor_id,
+        action="admin.invite.create",
+        target_kind="invite",
+        target_id=str(invite.id),
+        request=request,
+        payload={"tenant_id": body.tenant_id, "email": email, "role": body.role},
+    )
+    await session.commit()
+    await session.refresh(invite)
+    return {
+        "id": invite.id,
+        "tenant_id": invite.tenant_id,
+        "email": invite.email,
+        "role": invite.role,
+        "expires_at": invite.expires_at.isoformat(),
+        "accepted_at": invite.accepted_at.isoformat() if invite.accepted_at else None,
+        "created_at": invite.created_at.isoformat(),
+    }
 
 
 @router.delete("/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
