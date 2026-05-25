@@ -38,5 +38,8 @@ class Settings(BaseSettings):
     proxy_connect_timeout: float = 5.0
     proxy_read_timeout: float = 60.0
 
+    # CORS allowlist for the admin UI. Comma-separated origins.
+    admin_cors_origins: str = "http://localhost:3020,https://admin.mysaleschimp.com"
+
 
 settings = Settings()

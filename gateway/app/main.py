@@ -14,10 +14,12 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Import models so SQLAlchemy registers them on Base.metadata (used by alembic
 # autogenerate). Side-effect import; intentional.
 from app import models as _models  # noqa: F401
+from app.admin.routes import router as admin_router
 from app.auth.bootstrap import bootstrap_super_admin_if_needed
 from app.auth.routes import router as auth_router
 from app.config import settings
@@ -46,8 +48,18 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# CORS for the admin UI (different origin: admin.mysaleschimp.com / localhost:3020).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.admin_cors_origins.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Gateway-owned routes. Mount BEFORE the catch-all proxy.
 app.include_router(auth_router, prefix="/api/auth")
+app.include_router(admin_router, prefix="/api/admin")
 
 # Catch-all reverse proxy. MUST be mounted last — FastAPI matches in registration
 # order for ambiguous routes.

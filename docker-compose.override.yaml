@@ -75,3 +75,20 @@ services:
       start_period: 15s
     networks:
       - app-network
+
+  # Super-admin Next.js app. Talks to the gateway via NEXT_PUBLIC_GATEWAY_URL.
+  # Eventually served at admin.mysaleschimp.com; on localhost it's :3020.
+  admin-ui:
+    image: saleschimp/admin-ui:latest
+    build:
+      context: ./admin-ui
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_GATEWAY_URL: "${ADMIN_UI_GATEWAY_URL:-http://localhost:8080}"
+    ports:
+      - "3020:3020"
+    depends_on:
+      gateway:
+        condition: service_started
+    networks:
+      - app-network
