@@ -3,6 +3,29 @@
 Customized [Dograh](https://github.com/dograh-hq/dograh) deployment for
 voice.mysaleschimp.com.
 
+## Contributing
+
+`main` is protected. All changes go through PRs:
+
+```bash
+git switch -c feat/your-change
+# ...edit...
+git commit -am "feat: describe the change"
+git push -u origin feat/your-change
+gh pr create --fill
+```
+
+The `no-dograh-edits` workflow (`.github/workflows/no-dograh-edits.yml`) runs
+on every PR and **fails if the diff touches any file under `dograh/`** — that
+folder is a submodule and must only change via the submodule pointer
+(see [docs/saas-architecture.md §3](docs/saas-architecture.md)). Need to patch
+Dograh source? Fork `dograh-hq/dograh` under Elevenvibe and repoint the
+submodule URL.
+
+Force-pushes and branch deletion on `main` are disabled. The owner can merge
+without an approving review (solo-dev mode); raise the bar later by bumping
+`required_approving_review_count` in the branch protection rule.
+
 ## How this repo is organized
 
 ```
