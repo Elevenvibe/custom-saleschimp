@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     # Control DB (Postgres). Defaults to the shared postgres service / database 'control'.
     database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/control"
 
+    # Dograh's DB on the same postgres instance — used for the small set of
+    # writes the gateway needs to make against it (invite acceptance: add the
+    # user to an existing org instead of letting Dograh auto-create one).
+    dograh_database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/postgres"
+
     # JWT — must equal Dograh's OSS_JWT_SECRET for tokens we mint to be accepted by Dograh.
     jwt_secret: str = "ChangeMeInProduction"
     jwt_algorithm: str = "HS256"

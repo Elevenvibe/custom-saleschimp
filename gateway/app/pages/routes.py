@@ -32,3 +32,9 @@ async def signup_page(_request: Request) -> HTMLResponse:
 async def verify_page(_request: Request, token: str | None = None) -> HTMLResponse:
     tmpl = _jinja.get_template("verify.html")
     return HTMLResponse(await tmpl.render_async(token=token or ""))
+
+
+@router.get("/accept-invite", response_class=HTMLResponse)
+async def accept_invite_page(_request: Request, token: str | None = None) -> HTMLResponse:
+    tmpl = _jinja.get_template("accept-invite.html")
+    return HTMLResponse(await tmpl.render_async(token=token or ""))
