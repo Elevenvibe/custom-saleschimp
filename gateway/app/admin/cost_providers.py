@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
 from app.billing.adapters import AdapterError, get_adapter
-from app.billing.integrated_catalog import INTEGRATED_PROVIDERS, find_provider
+from app.billing.integrated_catalog import COUNTRIES, INTEGRATED_PROVIDERS, find_provider
 from app.billing.models import CostProvider, CostProviderPrice, MarkupRule
 from app.db import get_session
 from app.email.crypto import decrypt_dict, encrypt_dict
@@ -201,6 +201,16 @@ async def list_integrated_providers(
     app/billing/integrated_catalog.py whenever a new integration ships.
     """
     return INTEGRATED_PROVIDERS
+
+
+@router.get("/countries")
+async def list_countries(
+    _claims: Annotated[dict, Depends(require_super_admin)],
+) -> list[dict]:
+    """ISO 3166-1 alpha-2 country list used by the telephony AddPriceDialog's
+    multi-select. Telephony prices a per-destination-country, so variant is a
+    country code rather than a model name."""
+    return [{"code": c, "name": n} for c, n in COUNTRIES]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ProviderOut)

@@ -109,7 +109,10 @@
 @layer base {
   * { @apply border-border outline-ring/50; }
   body { @apply bg-background text-foreground antialiased; }
-  html { @apply h-full; }
+  /* Bump 1rem from the default 16px → 18px. All Tailwind size utilities use rem,
+     so this nudges every text class up ~2-3px (text-xs 12→13.5, text-sm 14→15.75,
+     text-base 16→18, text-lg 18→20.25) — and icons / spacing scale proportionally. */
+  html { @apply h-full; font-size: 18px; }
 }
 
 /* Legacy utility classes used by existing pages — being replaced over time
