@@ -23,6 +23,7 @@ import {
   Package,
   PlugZap,
   Mail,
+  Send,
   Sparkles,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ const nav: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard /> },
   { title: "Tenants", url: "/tenants", icon: <Building2 /> },
   { title: "Platform users", url: "/platform-users", icon: <Users /> },
+  { title: "Invites", url: "/invites", icon: <Send /> },
   { title: "Audit log", url: "/audit", icon: <ScrollText /> },
   { title: "Packages", url: "/packages", icon: <Package /> },
   { title: "Plugins", url: "/plugins", icon: <PlugZap /> },

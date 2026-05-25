@@ -26,6 +26,7 @@ from app.config import settings
 from app.customer_auth.invites import public_router as invites_public_router
 from app.customer_auth.invites import tenant_router as invites_tenant_router
 from app.customer_auth.login import router as customer_login_router
+from app.customer_auth.me import router as customer_me_router
 from app.customer_auth.routes import router as customer_auth_router
 from app.pages.routes import router as pages_router
 from app.proxy.routes import router as proxy_router
@@ -54,10 +55,10 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# CORS for the admin UI (different origin: admin.mysaleschimp.com / localhost:3020).
+# CORS for cross-origin browser apps (admin UI + customer app).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.admin_cors_origins.split(",") if o.strip()],
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,6 +70,7 @@ app.include_router(customer_auth_router, prefix="/api/auth")
 app.include_router(customer_login_router, prefix="/api/auth")
 app.include_router(invites_public_router, prefix="/api/auth")
 app.include_router(invites_tenant_router, prefix="/api/tenant")
+app.include_router(customer_me_router, prefix="/api/tenant")
 app.include_router(admin_router, prefix="/api/admin")
 app.include_router(pages_router)
 

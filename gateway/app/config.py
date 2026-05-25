@@ -43,16 +43,23 @@ class Settings(BaseSettings):
     proxy_connect_timeout: float = 5.0
     proxy_read_timeout: float = 60.0
 
-    # CORS allowlist for the admin UI. Comma-separated origins.
-    admin_cors_origins: str = "http://localhost:3020,https://admin.mysaleschimp.com"
+    # CORS allowlist for browser apps that call the gateway from a different
+    # origin (admin UI + customer app). Comma-separated.
+    cors_origins: str = (
+        "http://localhost:3020,https://admin.mysaleschimp.com,"
+        "http://localhost:3030,https://app.mysaleschimp.com"
+    )
 
-    # Public URL where the gateway is reachable from the user's browser. Used
-    # to build verification + invite links in outgoing emails.
+    # Public URL of the gateway (where the API + reverse proxy live).
     public_base_url: str = "http://localhost:8080"
 
-    # Where the verify endpoint sends the user after successful verification.
-    # In P1.A this just lands them on the Dograh UI through the gateway proxy.
-    post_verify_redirect: str = "/"
+    # Public URL of the customer-facing Next.js app. Verification, invite, and
+    # password-reset links emailed to customers point here.
+    customer_app_url: str = "http://localhost:3030"
+
+    # Where the post-verify / post-accept flow sends the user. The customer
+    # app intercepts this and renders the onboarding wizard.
+    post_verify_redirect: str = "/onboarding"
 
 
 settings = Settings()

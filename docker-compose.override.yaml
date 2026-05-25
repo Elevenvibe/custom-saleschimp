@@ -92,3 +92,21 @@ services:
         condition: service_started
     networks:
       - app-network
+
+  # Customer-facing Next.js app. Hosts signup/login/verify/accept-invite +
+  # onboarding wizard + customer dashboard. Eventually served at
+  # app.mysaleschimp.com; on localhost it's :3030.
+  app-ui:
+    image: saleschimp/app-ui:latest
+    build:
+      context: ./app-ui
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_GATEWAY_URL: "${APP_UI_GATEWAY_URL:-http://localhost:8080}"
+    ports:
+      - "3030:3030"
+    depends_on:
+      gateway:
+        condition: service_started
+    networks:
+      - app-network
