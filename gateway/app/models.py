@@ -9,7 +9,7 @@ from app.auth.models import PlatformUser
 from app.email.models import EmailProviderConfig
 from app.packages.models import Package, PackagePlugin
 from app.plugins.models import InstalledPlugin
-from app.tenants.models import Tenant, TenantMember
+from app.tenants.models import Invite, Tenant, TenantMember
 
 __all__ = [
     "AuditLog",
@@ -17,6 +17,7 @@ __all__ = [
     "EmailProviderConfig",
     "Tenant",
     "TenantMember",
+    "Invite",
     "Package",
     "PackagePlugin",
     "InstalledPlugin",

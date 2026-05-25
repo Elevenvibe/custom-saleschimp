@@ -23,6 +23,8 @@ from app.admin.routes import router as admin_router
 from app.auth.bootstrap import bootstrap_super_admin_if_needed
 from app.auth.routes import router as auth_router
 from app.config import settings
+from app.customer_auth.invites import public_router as invites_public_router
+from app.customer_auth.invites import tenant_router as invites_tenant_router
 from app.customer_auth.routes import router as customer_auth_router
 from app.pages.routes import router as pages_router
 from app.proxy.routes import router as proxy_router
@@ -63,6 +65,8 @@ app.add_middleware(
 # Gateway-owned routes. Mount BEFORE the catch-all proxy.
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(customer_auth_router, prefix="/api/auth")
+app.include_router(invites_public_router, prefix="/api/auth")
+app.include_router(invites_tenant_router, prefix="/api/tenant")
 app.include_router(admin_router, prefix="/api/admin")
 app.include_router(pages_router)
 

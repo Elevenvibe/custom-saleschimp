@@ -1,0 +1,89 @@
+{% extends "_base.html" %}
+{% block title %}Accept invitation — SalesChimp{% endblock %}
+{% block body %}
+  <h1>Accept invitation</h1>
+  <p class="muted" id="lead">Loading invitation details…</p>
+
+  <form id="f" style="display: none;">
+    <label for="full_name">Your name</label>
+    <input id="full_name" name="full_name" required maxlength="128">
+
+    <label for="password">Choose a password (min 8 chars)</label>
+    <input id="password" name="password" type="password" minlength="8" required>
+
+    <button id="submit" type="submit">Accept invitation</button>
+    <div id="out"></div>
+  </form>
+
+  <div id="error"></div>
+
+  <script>
+    const token = {{ token | tojson }};
+    const lead = document.getElementById('lead');
+    const form = document.getElementById('f');
+    const out = document.getElementById('out');
+    const btn = document.getElementById('submit');
+    const errBox = document.getElementById('error');
+
+    (async () => {
+      if (!token) {
+        lead.style.display = 'none';
+        errBox.innerHTML = '<div class="err">No invite token in this link.</div>';
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/invites/' + encodeURIComponent(token) + '/preview');
+        const data = await res.json();
+        if (!res.ok) {
+          lead.style.display = 'none';
+          errBox.innerHTML = '<div class="err">' + (data.detail || res.statusText) + '</div>';
+          return;
+        }
+        lead.innerHTML =
+          (data.invited_by_email ? data.invited_by_email + ' invited you' : 'You\'ve been invited') +
+          ' to join <strong>' + escape(data.tenant_name) + '</strong> as <strong>' + escape(data.role.replace('_', ' ')) + '</strong> using ' +
+          '<code>' + escape(data.email) + '</code>.';
+        form.style.display = '';
+      } catch (e) {
+        lead.style.display = 'none';
+        errBox.innerHTML = '<div class="err">' + e.message + '</div>';
+      }
+    })();
+
+    function escape(s) {
+      return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      out.innerHTML = '';
+      btn.disabled = true;
+      btn.textContent = 'Joining…';
+      const fd = new FormData(form);
+      try {
+        const res = await fetch('/api/auth/accept-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            full_name: fd.get('full_name'),
+            password: fd.get('password'),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          out.innerHTML = '<div class="err">' + (data.detail || res.statusText) + '</div>';
+          return;
+        }
+        localStorage.setItem('sc_customer_token', data.access_token);
+        out.innerHTML = '<div class="ok">Joined — redirecting…</div>';
+        setTimeout(() => { window.location.replace(data.redirect || '/'); }, 700);
+      } catch (e) {
+        out.innerHTML = '<div class="err">' + e.message + '</div>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Accept invitation';
+      }
+    });
+  </script>
+{% endblock %}

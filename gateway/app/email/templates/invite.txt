@@ -1,0 +1,10 @@
+You're invited to {{ tenant_name }} on {{ product_name }}
+
+{% if inviter_email %}{{ inviter_email }} has{% else %}You've been{% endif %} invited you to join
+{{ tenant_name }} as a {{ role.replace('_', ' ') }}.
+
+Accept the invitation:
+
+    {{ accept_url }}
+
+This link expires in {{ ttl_days }} days.
