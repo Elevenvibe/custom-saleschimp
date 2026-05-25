@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type Package } from "@/lib/api";
-import { PageHeader } from "@/components/PageHeader";
+import { PageDescription, PageHeader } from "@/components/PageHeader";
 
 export default function PackagesPage() {
   const [packages, setPackages] = useState<Package[] | null>(null);
@@ -14,10 +14,10 @@ export default function PackagesPage() {
     <>
       <PageHeader
         title="Packages"
-        description="Subscription tiers — bundle plugins + limits for tenants"
         action={<button className="btn-primary" disabled title="CRUD lands in next admin batch">New package</button>}
       />
-      <div className="p-8">
+      <div className="p-8 space-y-4">
+        <PageDescription>Subscription tiers — bundle plugins + limits for tenants.</PageDescription>
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
