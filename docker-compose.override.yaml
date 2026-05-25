@@ -7,14 +7,67 @@
 #   docker compose up -d
 
 services:
+  # Custom UI image bakes in branding overlays. UPSTREAM_VERSION must match
+  # the dograh/ submodule version (sans dograh-v prefix). scripts/update-dograh.sh
+  # keeps these aligned.
   ui:
-    # Override the upstream image with a locally-built one that bakes in
-    # custom/ui/public/ overlays. UPSTREAM_VERSION must match the dograh/
-    # submodule version (without the dograh-v prefix). The
-    # scripts/update-dograh.sh helper keeps these aligned.
     image: custom-saleschimp/dograh-ui:latest
     build:
       context: .
       dockerfile: Dockerfile.ui
       args:
         UPSTREAM_VERSION: 1.31.0
+
+  # Create the gateway's Control DB on first boot. Runs after postgres is healthy,
+  # exits immediately. Idempotent.
+  control-db-init:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: postgres
+    entrypoint:
+      - sh
+      - -c
+      - |
+        psql -h postgres -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='control'" \
+          | grep -q 1 || psql -h postgres -U postgres -c "CREATE DATABASE control"
+    networks:
+      - app-network
+    restart: "no"
+
+  # SaaS Gateway (P0 skeleton: /healthz only; auth/proxy/admin land in later phases).
+  gateway:
+    image: saleschimp/gateway:latest
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    environment:
+      GATEWAY_ENVIRONMENT: "${ENVIRONMENT:-local}"
+      GATEWAY_LOG_LEVEL: "INFO"
+      GATEWAY_DATABASE_URL: "postgresql+asyncpg://postgres:postgres@postgres:5432/control"
+      # Must equal Dograh's OSS_JWT_SECRET so JWTs the gateway mints are accepted by Dograh.
+      GATEWAY_JWT_SECRET: "${OSS_JWT_SECRET:-ChangeMeInProduction}"
+      # Fernet key for at-rest encryption of secrets in Control DB. Generate with:
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      GATEWAY_SECRETS_KEY: "${GATEWAY_SECRETS_KEY:-}"
+      GATEWAY_DOGRAH_UI_URL: "http://ui:3010"
+      GATEWAY_DOGRAH_API_URL: "http://api:8000"
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8080"
+    depends_on:
+      control-db-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - app-network

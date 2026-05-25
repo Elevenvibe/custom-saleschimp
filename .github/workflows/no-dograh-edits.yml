@@ -1,0 +1,36 @@
+name: no-dograh-edits
+
+# Hard constraint from docs/saas-architecture.md §3: the dograh/ submodule is
+# read-only. The only allowed change to it is the submodule pointer itself
+# (path "dograh" — no trailing slash). Any file under dograh/ implies someone
+# is editing upstream source, which breaks our upgrade model.
+#
+# This job fails the PR if it sees such edits.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject edits inside dograh/
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed=$(git diff --name-only "$base" "$head" -- 'dograh/*')
+          if [ -n "$changed" ]; then
+            echo "::error::PR modifies files inside the dograh/ submodule. Submodule contents come from upstream only."
+            echo ""
+            echo "Offending paths:"
+            echo "$changed" | sed 's/^/  - /'
+            echo ""
+            echo "If you need to change Dograh source, fork dograh-hq/dograh under Elevenvibe and repoint the submodule (see docs/saas-architecture.md §3)."
+            exit 1
+          fi
+          echo "OK — no edits inside dograh/."
