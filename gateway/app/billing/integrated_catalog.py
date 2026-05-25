@@ -60,6 +60,20 @@ def _per_min(usd: float) -> list[ModelPrice]:
     return [{"unit": "per_minute", "price_micros": round(usd * 1_000_000)}]
 
 
+def _telephony_countries(
+    by_code: dict[str, tuple[str, float]],
+) -> list[IntegratedModel]:
+    """Convert {country_code: (display_name, usd_per_minute)} to model rows.
+
+    Variant is the ISO 3166-1 alpha-2 code so the price row's variant column
+    self-documents which destination it covers.
+    """
+    return [
+        {"variant": code, "label": name, "prices": _per_min(price)}
+        for code, (name, price) in sorted(by_code.items())
+    ]
+
+
 def _per_1k_chars(usd: float) -> list[ModelPrice]:
     return [{"unit": "per_1k_chars", "price_micros": round(usd * 1_000_000)}]
 
@@ -238,54 +252,151 @@ INTEGRATED_PROVIDERS: dict[ProviderKind, list[IntegratedProvider]] = {
             ],
         },
     ],
+    # Telephony providers price by destination country, not by model.
+    # `variant` is the ISO 3166-1 alpha-2 country code; `label` is the
+    # human-readable country name. Each provider lists a starter set of
+    # destinations with reference per-minute prices — admins add more via
+    # the AddPriceDialog country multi-select.
     "telephony": [
         {
             "slug": "twilio",
             "name": "Twilio",
             "homepage": "https://twilio.com",
-            "models": [
-                {"variant": "outbound", "label": "Outbound voice (US)", "prices": _per_min(0.0140)},
-                {"variant": "inbound", "label": "Inbound voice (US toll-free)", "prices": _per_min(0.0220)},
-            ],
+            "models": _telephony_countries({
+                "US": ("United States", 0.0140),
+                "CA": ("Canada", 0.0140),
+                "GB": ("United Kingdom", 0.0250),
+                "AU": ("Australia", 0.0420),
+                "DE": ("Germany", 0.0190),
+                "FR": ("France", 0.0180),
+                "IN": ("India", 0.0130),
+                "BR": ("Brazil", 0.0220),
+                "MX": ("Mexico", 0.0200),
+                "JP": ("Japan", 0.0530),
+            }),
         },
         {
             "slug": "vonage",
             "name": "Vonage",
             "homepage": "https://vonage.com",
-            "models": [
-                {"variant": "outbound", "label": "Outbound voice (US)", "prices": _per_min(0.0130)},
-                {"variant": "inbound", "label": "Inbound voice (US toll-free)", "prices": _per_min(0.0185)},
-            ],
+            "models": _telephony_countries({
+                "US": ("United States", 0.0130),
+                "CA": ("Canada", 0.0130),
+                "GB": ("United Kingdom", 0.0240),
+                "AU": ("Australia", 0.0410),
+                "DE": ("Germany", 0.0180),
+                "IN": ("India", 0.0125),
+            }),
         },
         {
             "slug": "cloudonix",
             "name": "Cloudonix",
             "homepage": "https://cloudonix.com",
-            "models": [
-                {"variant": "outbound", "label": "Outbound voice", "prices": _per_min(0.010)},
-                {"variant": "inbound", "label": "Inbound voice", "prices": _per_min(0.010)},
-            ],
+            "models": _telephony_countries({
+                "US": ("United States", 0.010),
+                "CA": ("Canada", 0.010),
+                "GB": ("United Kingdom", 0.020),
+                "IL": ("Israel", 0.010),
+            }),
         },
         {
             "slug": "telnyx",
             "name": "Telnyx",
             "homepage": "https://telnyx.com",
-            "models": [
-                {"variant": "outbound", "label": "Outbound voice (US)", "prices": _per_min(0.0070)},
-                {"variant": "inbound", "label": "Inbound voice (US toll-free)", "prices": _per_min(0.0130)},
-            ],
+            "models": _telephony_countries({
+                "US": ("United States", 0.0070),
+                "CA": ("Canada", 0.0070),
+                "GB": ("United Kingdom", 0.0210),
+                "AU": ("Australia", 0.0390),
+                "DE": ("Germany", 0.0170),
+                "IN": ("India", 0.0110),
+            }),
         },
         {
             "slug": "plivo",
             "name": "Plivo",
             "homepage": "https://plivo.com",
-            "models": [
-                {"variant": "outbound", "label": "Outbound voice (US)", "prices": _per_min(0.0090)},
-                {"variant": "inbound", "label": "Inbound voice (US toll-free)", "prices": _per_min(0.0150)},
-            ],
+            "models": _telephony_countries({
+                "US": ("United States", 0.0090),
+                "CA": ("Canada", 0.0090),
+                "GB": ("United Kingdom", 0.0230),
+                "AU": ("Australia", 0.0430),
+                "IN": ("India", 0.0120),
+            }),
         },
     ],
 }
+
+
+# ISO 3166-1 alpha-2 → display name. Used by the admin UI's country multi-select
+# and as the canonical list of valid telephony variants. Trimmed to the ~80
+# destinations Dograh-class voice traffic typically targets; admins can still
+# enter a custom variant for anything missing.
+COUNTRIES: list[tuple[str, str]] = [
+    ("AE", "United Arab Emirates"),
+    ("AR", "Argentina"),
+    ("AT", "Austria"),
+    ("AU", "Australia"),
+    ("BE", "Belgium"),
+    ("BG", "Bulgaria"),
+    ("BR", "Brazil"),
+    ("CA", "Canada"),
+    ("CH", "Switzerland"),
+    ("CL", "Chile"),
+    ("CN", "China"),
+    ("CO", "Colombia"),
+    ("CZ", "Czechia"),
+    ("DE", "Germany"),
+    ("DK", "Denmark"),
+    ("EG", "Egypt"),
+    ("ES", "Spain"),
+    ("FI", "Finland"),
+    ("FR", "France"),
+    ("GB", "United Kingdom"),
+    ("GR", "Greece"),
+    ("HK", "Hong Kong"),
+    ("HR", "Croatia"),
+    ("HU", "Hungary"),
+    ("ID", "Indonesia"),
+    ("IE", "Ireland"),
+    ("IL", "Israel"),
+    ("IN", "India"),
+    ("IT", "Italy"),
+    ("JP", "Japan"),
+    ("KE", "Kenya"),
+    ("KR", "South Korea"),
+    ("LT", "Lithuania"),
+    ("LU", "Luxembourg"),
+    ("LV", "Latvia"),
+    ("MA", "Morocco"),
+    ("MX", "Mexico"),
+    ("MY", "Malaysia"),
+    ("NG", "Nigeria"),
+    ("NL", "Netherlands"),
+    ("NO", "Norway"),
+    ("NZ", "New Zealand"),
+    ("PE", "Peru"),
+    ("PH", "Philippines"),
+    ("PK", "Pakistan"),
+    ("PL", "Poland"),
+    ("PT", "Portugal"),
+    ("RO", "Romania"),
+    ("RS", "Serbia"),
+    ("RU", "Russia"),
+    ("SA", "Saudi Arabia"),
+    ("SE", "Sweden"),
+    ("SG", "Singapore"),
+    ("SI", "Slovenia"),
+    ("SK", "Slovakia"),
+    ("TH", "Thailand"),
+    ("TR", "Turkey"),
+    ("TW", "Taiwan"),
+    ("UA", "Ukraine"),
+    ("US", "United States"),
+    ("VN", "Vietnam"),
+    ("ZA", "South Africa"),
+]
+
 
 
 def find_provider(slug: str) -> tuple[ProviderKind, IntegratedProvider] | None:

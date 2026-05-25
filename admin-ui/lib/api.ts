@@ -202,6 +202,8 @@ export type SyncPricesRes = {
 
 export type CredentialsStatus = { configured: boolean };
 
+export type Country = { code: string; name: string };
+
 export type MarkupRule = {
   id: number;
   scope_kind: "global" | "kind" | "tenant";

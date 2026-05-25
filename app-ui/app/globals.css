@@ -109,7 +109,9 @@
 @layer base {
   * { @apply border-border outline-ring/50; }
   body { @apply bg-background text-foreground antialiased; }
-  html { @apply h-full; }
+  /* Bump 1rem from 16px → 18px. Tailwind sizing scales with rem, so this nudges
+     all text classes up ~2-3px while keeping the proportional layout intact. */
+  html { @apply h-full; font-size: 18px; }
 }
 
 /* Legacy utility classes used by existing pages — being replaced over time

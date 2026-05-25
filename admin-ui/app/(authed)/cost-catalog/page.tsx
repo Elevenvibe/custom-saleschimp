@@ -7,6 +7,7 @@ import {
   type AvailableModelsRes,
   type CostProvider,
   type CostProviderPrice,
+  type Country,
   type CredentialsStatus,
   type IntegratedCatalog,
   type IntegratedProvider,
@@ -468,7 +469,8 @@ function ProviderModels({
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Sync prices
           </Button>
           <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
-            <Plus className="h-4 w-4" /> Add model
+            <Plus className="h-4 w-4" />{" "}
+            {provider.kind === "telephony" ? "Add countries" : "Add model"}
           </Button>
         </div>
       </div>
@@ -480,7 +482,9 @@ function ProviderModels({
         <table className="w-full text-xs">
           <thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="px-3 py-1.5">Model (variant)</th>
+              <th className="px-3 py-1.5">
+                {provider.kind === "telephony" ? "Country" : "Model (variant)"}
+              </th>
               <th className="px-3 py-1.5">Unit</th>
               <th className="px-3 py-1.5">Original cost</th>
               <th className="px-3 py-1.5">Markup</th>
@@ -494,8 +498,11 @@ function ProviderModels({
             {prices?.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">
-                  No models priced yet — try <span className="font-medium">Sync prices</span> to seed from the
-                  integrated catalog, or <span className="font-medium">Add model</span> for a custom one.
+                  {provider.kind === "telephony" ? (
+                    <>No destinations priced yet — try <span className="font-medium">Sync prices</span> to seed the catalog defaults, or <span className="font-medium">Add countries</span>.</>
+                  ) : (
+                    <>No models priced yet — try <span className="font-medium">Sync prices</span> to seed from the integrated catalog, or <span className="font-medium">Add model</span> for a custom one.</>
+                  )}
                 </td>
               </tr>
             )}
@@ -764,6 +771,11 @@ function AddPriceDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  // Telephony is a different shape — country multi-select, single per_minute
+  // price applied to every pick (bulk insert).
+  if (provider.kind === "telephony") {
+    return <AddTelephonyDialog provider={provider} onClose={onClose} onCreated={onCreated} />;
+  }
   // Available models come from /available-models — live fetch when creds are
   // configured for an OpenAI-compatible adapter, catalog otherwise. Always
   // scoped to THIS provider's slug.
@@ -902,6 +914,193 @@ function AddPriceDialog({
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={submit} disabled={busy || !pricePerUnit || !effectiveVariant}>
             {busy ? "Saving…" : "Add price"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddTelephonyDialog({
+  provider,
+  onClose,
+  onCreated,
+}: {
+  provider: CostProvider;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [countries, setCountries] = useState<Country[] | null>(null);
+  const [existing, setExisting] = useState<Set<string>>(new Set());
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [pricePerMinUsd, setPricePerMinUsd] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  useEffect(() => {
+    // ISO countries from the gateway.
+    api<Country[]>("/api/admin/cost-providers/countries").then(setCountries).catch((e) => setError(e.message));
+    // Existing priced countries for this provider — gray them out / mark "added"
+    // so the admin doesn't double-insert.
+    api<CostProviderPrice[]>(`/api/admin/cost-providers/${provider.id}/prices`)
+      .then((rows) => {
+        setExisting(new Set(rows.filter((r) => r.unit === "per_minute" && r.variant).map((r) => r.variant!)));
+      })
+      .catch(() => {});
+  }, [provider.id]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const all = countries ?? [];
+    if (!q) return all;
+    return all.filter((c) => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+  }, [countries, search]);
+
+  function toggle(code: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+
+  function selectAllFiltered() {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      for (const c of filtered) if (!existing.has(c.code)) next.add(c.code);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setPicked(new Set());
+  }
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    setProgress(null);
+    try {
+      const usd = Number(pricePerMinUsd);
+      if (!Number.isFinite(usd) || usd < 0) throw new Error("price must be a positive number");
+      const price_micros = Math.round(usd * MICROS_PER_UNIT);
+      const codes = [...picked];
+      if (codes.length === 0) throw new Error("pick at least one country");
+
+      setProgress({ done: 0, total: codes.length });
+      for (let i = 0; i < codes.length; i++) {
+        const code = codes[i];
+        // skip ones that already have a per_minute price
+        if (existing.has(code)) {
+          setProgress({ done: i + 1, total: codes.length });
+          continue;
+        }
+        await api(`/api/admin/cost-providers/${provider.id}/prices`, {
+          method: "POST",
+          body: JSON.stringify({
+            unit: "per_minute",
+            variant: code,
+            price_micros,
+            notes: notes || null,
+          }),
+        });
+        setProgress({ done: i + 1, total: codes.length });
+      }
+      onCreated();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add destinations for {provider.name}</DialogTitle>
+          <DialogDescription>
+            Telephony is priced per destination country, not per model. Pick the countries you want to enable and
+            set a single per-minute rate that applies to all of them. Already-priced countries are marked
+            <Badge variant="secondary" className="mx-1 px-1.5 py-0">added</Badge> and skipped on submit.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Price per minute (USD)</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={pricePerMinUsd}
+                onChange={(e) => setPricePerMinUsd(e.target.value)}
+                placeholder="0.014"
+              />
+            </div>
+            <div>
+              <Label>Notes (optional)</Label>
+              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. outbound long-distance" />
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <Label>Countries ({picked.size} selected)</Label>
+              <div className="space-x-2 text-xs">
+                <button type="button" className="underline" onClick={selectAllFiltered}>Select all visible</button>
+                <button type="button" className="underline" onClick={clearSelection}>Clear</button>
+              </div>
+            </div>
+            <Input
+              placeholder="Search country name or ISO code…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="mt-2 max-h-72 overflow-y-auto rounded border bg-background">
+              {!countries && (
+                <div className="px-3 py-4 text-center text-sm text-muted-foreground">Loading countries…</div>
+              )}
+              {countries && filtered.length === 0 && (
+                <div className="px-3 py-4 text-center text-sm text-muted-foreground">No matches.</div>
+              )}
+              {filtered.map((c) => {
+                const isExisting = existing.has(c.code);
+                const isPicked = picked.has(c.code);
+                return (
+                  <label
+                    key={c.code}
+                    className={`flex cursor-pointer items-center gap-2 border-t px-3 py-1.5 text-sm hover:bg-muted/40 ${
+                      isExisting ? "opacity-60" : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isPicked || isExisting}
+                      disabled={isExisting}
+                      onChange={() => toggle(c.code)}
+                    />
+                    <span className="font-mono text-xs text-muted-foreground w-8">{c.code}</span>
+                    <span className="flex-1">{c.name}</span>
+                    {isExisting && <Badge variant="secondary" className="px-1.5 py-0">added</Badge>}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          {progress && (
+            <div className="rounded-md border bg-muted/40 px-3 py-1.5 text-xs">
+              Inserting {progress.done}/{progress.total}…
+            </div>
+          )}
+          {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || !pricePerMinUsd || picked.size === 0}>
+            {busy ? "Adding…" : `Add ${picked.size} destination${picked.size === 1 ? "" : "s"}`}
           </Button>
         </DialogFooter>
       </DialogContent>
