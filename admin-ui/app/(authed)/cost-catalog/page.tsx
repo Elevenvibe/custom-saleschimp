@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   api,
   type CostProvider,
   type CostProviderPrice,
+  type IntegratedCatalog,
+  type IntegratedModel,
+  type IntegratedProvider,
   type MarkupRule,
   type PriceUnit,
   type ProviderKind,
@@ -30,9 +33,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChevronDown, ChevronRight, ExternalLink, Plus, Trash2 } from "lucide-react";
 
-const KINDS: ProviderKind[] = ["llm", "tts", "stt", "embedding", "telephony"];
+const KINDS: { id: ProviderKind; label: string }[] = [
+  { id: "llm", label: "LLM" },
+  { id: "stt", label: "STT" },
+  { id: "tts", label: "TTS" },
+  { id: "embedding", label: "Embedding" },
+  { id: "telephony", label: "Telephony" },
+];
 
 const UNITS: PriceUnit[] = [
   "per_minute",
@@ -45,24 +55,56 @@ const UNITS: PriceUnit[] = [
   "per_request",
 ];
 
-function microsToUsd(micros: number): string {
-  const usd = micros / 1_000_000;
-  // micros are millionths of a currency unit. Display with enough precision to
-  // keep token prices legible without trailing zeros for fat ones.
-  if (Math.abs(usd) >= 0.01) return `$${usd.toFixed(4)}`;
+const MICROS_PER_UNIT = 1_000_000;
+const CUSTOM_SLUG = "__custom__";
+
+function microsToUsd(micros: number, precision = 4): string {
+  const usd = micros / MICROS_PER_UNIT;
+  if (Math.abs(usd) >= 0.01 || usd === 0) return `$${usd.toFixed(precision)}`;
   return `$${usd.toFixed(7)}`;
 }
 
 function microsToPct(micros: number): string {
-  return `${(micros / 1_000_000).toFixed(2)}%`;
+  return `${(micros / MICROS_PER_UNIT).toFixed(2)}%`;
+}
+
+/** Pick the markup rule that applies to a given provider kind for a USD billing run with no tenant override.
+ *  Mirrors the gateway's resolver (global → no markup); kind/tenant overrides aren't visualized here yet
+ *  because per-model rows don't know a tenant context. */
+function resolveMarkup(kind: ProviderKind, rules: MarkupRule[] | null): MarkupRule | null {
+  if (!rules) return null;
+  const usdActive = rules.filter((r) => r.active && r.currency === "USD");
+  const kindRule = usdActive
+    .filter((r) => r.scope_kind === "kind" && r.scope_value === kind)
+    .sort((a, b) => b.priority - a.priority)[0];
+  if (kindRule) return kindRule;
+  const globalRule = usdActive
+    .filter((r) => r.scope_kind === "global")
+    .sort((a, b) => b.priority - a.priority)[0];
+  return globalRule ?? null;
+}
+
+function applyMarkup(rawMicros: number, rule: MarkupRule | null, quantityMinutes?: number): number {
+  if (!rule) return 0;
+  if (rule.markup_kind === "percentage") {
+    return Math.round((rawMicros * rule.value_micros) / (100 * MICROS_PER_UNIT));
+  }
+  if (rule.markup_kind === "fixed_per_minute") {
+    // Without a known minute count this is informational only — show the per-minute add-on.
+    return Math.round(rule.value_micros * (quantityMinutes ?? 1));
+  }
+  // fixed_per_unit
+  return rule.value_micros;
 }
 
 export default function CostCatalogPage() {
   const [providers, setProviders] = useState<CostProvider[] | null>(null);
   const [markup, setMarkup] = useState<MarkupRule[] | null>(null);
+  const [catalog, setCatalog] = useState<IntegratedCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showNewProvider, setShowNewProvider] = useState(false);
   const [showNewMarkup, setShowNewMarkup] = useState(false);
+  const [activeTab, setActiveTab] = useState<ProviderKind>("llm");
   const [openProviderId, setOpenProviderId] = useState<number | null>(null);
 
   function loadProviders() {
@@ -71,10 +113,22 @@ export default function CostCatalogPage() {
   function loadMarkup() {
     api<MarkupRule[]>("/api/admin/markup-rules").then(setMarkup).catch(() => {});
   }
+  function loadCatalog() {
+    api<IntegratedCatalog>("/api/admin/cost-providers/integrated").then(setCatalog).catch(() => {});
+  }
   useEffect(() => {
     loadProviders();
     loadMarkup();
+    loadCatalog();
   }, []);
+
+  const byKind = useMemo(() => {
+    const m: Record<ProviderKind, CostProvider[]> = {
+      llm: [], tts: [], stt: [], embedding: [], telephony: [],
+    };
+    for (const p of providers ?? []) m[p.kind].push(p);
+    return m;
+  }, [providers]);
 
   async function deleteProvider(id: number) {
     if (!confirm("Delete this provider and ALL its prices?")) return;
@@ -113,9 +167,9 @@ export default function CostCatalogPage() {
       />
       <div className="p-8 space-y-8">
         <PageDescription>
-          Per-provider unit pricing (LLM, TTS, STT, embedding, telephony) plus the markup rules that turn raw provider
-          cost into the customer&apos;s billable rate. Money stored as micros (millionths of a currency unit) for
-          sub-cent precision on per-token math.
+          Per-provider unit pricing organised by kind, plus the markup rules that turn raw provider cost into the
+          customer&apos;s billable rate. Click a provider to see its models, the raw vendor price, and what we&apos;ll
+          actually charge after markup.
         </PageDescription>
 
         {error && (
@@ -123,39 +177,31 @@ export default function CostCatalogPage() {
         )}
 
         <section>
-          <div className="mb-3 text-sm font-medium">Providers</div>
-          <div className="rounded-lg border bg-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 w-8" />
-                  <th className="px-4 py-2">Kind</th>
-                  <th className="px-4 py-2">Name</th>
-                  <th className="px-4 py-2">Slug</th>
-                  <th className="px-4 py-2">Currency</th>
-                  <th className="px-4 py-2">Active</th>
-                  <th className="px-4 py-2 w-16" />
-                </tr>
-              </thead>
-              <tbody>
-                {!providers && (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>
-                )}
-                {providers?.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No providers yet — add one.</td></tr>
-                )}
-                {providers?.map((p) => (
-                  <ProviderRow
-                    key={p.id}
-                    provider={p}
-                    open={openProviderId === p.id}
-                    onToggle={() => setOpenProviderId(openProviderId === p.id ? null : p.id)}
-                    onDelete={() => deleteProvider(p.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as ProviderKind); setOpenProviderId(null); }}>
+            <TabsList>
+              {KINDS.map((k) => (
+                <TabsTrigger key={k.id} value={k.id}>
+                  {k.label}
+                  <Badge variant="secondary" className="ml-2 px-1.5 py-0">
+                    {byKind[k.id].length}
+                  </Badge>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {KINDS.map((k) => (
+              <TabsContent key={k.id} value={k.id} className="mt-4">
+                <ProviderTable
+                  providers={byKind[k.id]}
+                  loading={providers === null}
+                  kind={k.id}
+                  markup={resolveMarkup(k.id, markup)}
+                  openProviderId={openProviderId}
+                  onToggle={(id) => setOpenProviderId(openProviderId === id ? null : id)}
+                  onDelete={deleteProvider}
+                />
+              </TabsContent>
+            ))}
+          </Tabs>
         </section>
 
         <section>
@@ -173,7 +219,9 @@ export default function CostCatalogPage() {
                 </tr>
               </thead>
               <tbody>
-                {!markup && <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>}
+                {!markup && (
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                )}
                 {markup?.length === 0 && (
                   <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No markup rules — billing will charge raw provider cost only.</td></tr>
                 )}
@@ -209,6 +257,8 @@ export default function CostCatalogPage() {
 
       {showNewProvider && (
         <NewProviderDialog
+          catalog={catalog}
+          defaultKind={activeTab}
           onClose={() => setShowNewProvider(false)}
           onCreated={() => {
             setShowNewProvider(false);
@@ -229,13 +279,72 @@ export default function CostCatalogPage() {
   );
 }
 
+function ProviderTable({
+  providers,
+  loading,
+  kind,
+  markup,
+  openProviderId,
+  onToggle,
+  onDelete,
+}: {
+  providers: CostProvider[];
+  loading: boolean;
+  kind: ProviderKind;
+  markup: MarkupRule | null;
+  openProviderId: number | null;
+  onToggle: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <tr>
+            <th className="px-4 py-2 w-8" />
+            <th className="px-4 py-2">Name</th>
+            <th className="px-4 py-2">Slug</th>
+            <th className="px-4 py-2">Currency</th>
+            <th className="px-4 py-2">Active</th>
+            <th className="px-4 py-2 w-16" />
+          </tr>
+        </thead>
+        <tbody>
+          {loading && (
+            <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>
+          )}
+          {!loading && providers.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                No {kind} providers yet. Click <span className="font-medium">Provider</span> above to add one.
+              </td>
+            </tr>
+          )}
+          {providers.map((p) => (
+            <ProviderRow
+              key={p.id}
+              provider={p}
+              markup={markup}
+              open={openProviderId === p.id}
+              onToggle={() => onToggle(p.id)}
+              onDelete={() => onDelete(p.id)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ProviderRow({
   provider,
+  markup,
   open,
   onToggle,
   onDelete,
 }: {
   provider: CostProvider;
+  markup: MarkupRule | null;
   open: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -246,7 +355,6 @@ function ProviderRow({
         <td className="px-4 py-2 text-muted-foreground">
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </td>
-        <td className="px-4 py-2"><Badge variant="secondary" className="font-mono">{provider.kind}</Badge></td>
         <td className="px-4 py-2 font-medium">{provider.name}</td>
         <td className="px-4 py-2 font-mono text-xs">{provider.slug}</td>
         <td className="px-4 py-2 text-muted-foreground">{provider.currency}</td>
@@ -261,8 +369,8 @@ function ProviderRow({
       </tr>
       {open && (
         <tr className="bg-muted/20">
-          <td colSpan={7} className="px-6 py-3">
-            <ProviderPrices providerId={provider.id} />
+          <td colSpan={6} className="px-6 py-3">
+            <ProviderModels providerId={provider.id} kind={provider.kind} markup={markup} />
           </td>
         </tr>
       )}
@@ -270,7 +378,15 @@ function ProviderRow({
   );
 }
 
-function ProviderPrices({ providerId }: { providerId: number }) {
+function ProviderModels({
+  providerId,
+  kind,
+  markup,
+}: {
+  providerId: number;
+  kind: ProviderKind;
+  markup: MarkupRule | null;
+}) {
   const [prices, setPrices] = useState<CostProviderPrice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -283,7 +399,7 @@ function ProviderPrices({ providerId }: { providerId: number }) {
   useEffect(load, [providerId]);
 
   async function remove(id: number) {
-    if (!confirm("Delete this price?")) return;
+    if (!confirm("Delete this model price?")) return;
     try {
       await api(`/api/admin/cost-providers/${providerId}/prices/${id}`, { method: "DELETE" });
       load();
@@ -292,12 +408,21 @@ function ProviderPrices({ providerId }: { providerId: number }) {
     }
   }
 
+  const markupSummary = markup
+    ? markup.markup_kind === "percentage"
+      ? `+${microsToPct(markup.value_micros)} (${markup.scope_kind})`
+      : `+${microsToUsd(markup.value_micros)} per ${markup.markup_kind === "fixed_per_minute" ? "min" : "unit"} (${markup.scope_kind})`
+    : "no markup configured";
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prices</div>
+        <div className="text-xs text-muted-foreground">
+          <span className="font-medium uppercase tracking-wide">Models</span>{" "}
+          · markup applied to <code className="font-mono">{kind}</code>: <span className="font-mono">{markupSummary}</span>
+        </div>
         <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
-          <Plus className="h-4 w-4" /> Add price
+          <Plus className="h-4 w-4" /> Add model
         </Button>
       </div>
       {error && <div className="text-xs text-destructive">{error}</div>}
@@ -305,37 +430,45 @@ function ProviderPrices({ providerId }: { providerId: number }) {
         <table className="w-full text-xs">
           <thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground">
             <tr>
+              <th className="px-3 py-1.5">Model (variant)</th>
               <th className="px-3 py-1.5">Unit</th>
-              <th className="px-3 py-1.5">Variant</th>
-              <th className="px-3 py-1.5">Price</th>
+              <th className="px-3 py-1.5">Original cost</th>
+              <th className="px-3 py-1.5">Markup</th>
               <th className="px-3 py-1.5">Effective</th>
               <th className="px-3 py-1.5">Notes</th>
               <th className="px-3 py-1.5 w-12" />
             </tr>
           </thead>
           <tbody>
-            {!prices && <tr><td colSpan={6} className="px-3 py-3 text-center text-muted-foreground">Loading…</td></tr>}
-            {prices?.length === 0 && <tr><td colSpan={6} className="px-3 py-3 text-center text-muted-foreground">No prices configured.</td></tr>}
-            {prices?.map((p) => (
-              <tr key={p.id} className="border-t">
-                <td className="px-3 py-1.5 font-mono">{p.unit}</td>
-                <td className="px-3 py-1.5">{p.variant ?? "—"}</td>
-                <td className="px-3 py-1.5 font-mono">{microsToUsd(p.price_micros)} {p.currency}</td>
-                <td className="px-3 py-1.5 text-muted-foreground">{new Date(p.effective_at).toLocaleString()}</td>
-                <td className="px-3 py-1.5 text-muted-foreground">{p.notes ?? ""}</td>
-                <td className="px-3 py-1.5 text-right">
-                  <Button size="sm" variant="ghost" onClick={() => remove(p.id)} title="Delete">
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {!prices && <tr><td colSpan={7} className="px-3 py-3 text-center text-muted-foreground">Loading…</td></tr>}
+            {prices?.length === 0 && <tr><td colSpan={7} className="px-3 py-3 text-center text-muted-foreground">No models priced yet.</td></tr>}
+            {prices?.map((p) => {
+              const m = applyMarkup(p.price_micros, markup);
+              return (
+                <tr key={p.id} className="border-t">
+                  <td className="px-3 py-1.5 font-mono">{p.variant ?? "—"}</td>
+                  <td className="px-3 py-1.5 font-mono text-muted-foreground">{p.unit}</td>
+                  <td className="px-3 py-1.5 font-mono">{microsToUsd(p.price_micros)}</td>
+                  <td className="px-3 py-1.5 font-mono text-muted-foreground">
+                    {markup ? `+${microsToUsd(m)}` : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 font-mono font-medium">{microsToUsd(p.price_micros + m)}</td>
+                  <td className="px-3 py-1.5 text-muted-foreground">{p.notes ?? ""}</td>
+                  <td className="px-3 py-1.5 text-right">
+                    <Button size="sm" variant="ghost" onClick={() => remove(p.id)} title="Delete">
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
       {showAdd && (
         <AddPriceDialog
           providerId={providerId}
+          kind={kind}
           onClose={() => setShowAdd(false)}
           onCreated={() => {
             setShowAdd(false);
@@ -347,29 +480,68 @@ function ProviderPrices({ providerId }: { providerId: number }) {
   );
 }
 
-function NewProviderDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [kind, setKind] = useState<ProviderKind>("llm");
-  const [slug, setSlug] = useState("");
+function NewProviderDialog({
+  catalog,
+  defaultKind,
+  onClose,
+  onCreated,
+}: {
+  catalog: IntegratedCatalog | null;
+  defaultKind: ProviderKind;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [kind, setKind] = useState<ProviderKind>(defaultKind);
+  const [pickedSlug, setPickedSlug] = useState<string>("");
+  const [customSlug, setCustomSlug] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const options: IntegratedProvider[] = catalog?.[kind] ?? [];
+  const isCustom = pickedSlug === CUSTOM_SLUG;
+
+  // When kind changes, reset the picked provider.
+  useEffect(() => {
+    setPickedSlug("");
+    setName("");
+    setCustomSlug("");
+  }, [kind]);
+
+  // Auto-populate name when an integrated provider is picked.
+  useEffect(() => {
+    if (!isCustom && pickedSlug) {
+      const found = options.find((o) => o.slug === pickedSlug);
+      if (found) setName(found.name);
+    }
+  }, [pickedSlug, isCustom, options]);
+
+  const effectiveSlug = isCustom
+    ? customSlug.toLowerCase().replace(/[^a-z0-9-]/g, "-")
+    : pickedSlug;
+
   async function submit() {
     setBusy(true); setError(null);
     try {
+      if (!effectiveSlug) throw new Error("pick a provider");
+      if (!name) throw new Error("display name required");
       await api("/api/admin/cost-providers", {
         method: "POST",
-        body: JSON.stringify({ kind, slug, name }),
+        body: JSON.stringify({ kind, slug: effectiveSlug, name }),
       });
       onCreated();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New cost provider</DialogTitle>
-          <DialogDescription>Add a vendor whose service contributes to call cost.</DialogDescription>
+          <DialogDescription>
+            Pick the provider from the Dograh-integrated list. New integrations show up here
+            automatically when the gateway updates its catalog.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
@@ -377,23 +549,56 @@ function NewProviderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
             <Select value={kind} onValueChange={(v) => setKind(v as ProviderKind)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {KINDS.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                {KINDS.map((k) => <SelectItem key={k.id} value={k.id}>{k.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div>
-            <Label>Slug (lowercase, dashes)</Label>
-            <Input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} placeholder="openai" />
+            <Label>Provider</Label>
+            <Select value={pickedSlug} onValueChange={setPickedSlug}>
+              <SelectTrigger>
+                <SelectValue placeholder={options.length ? "Pick an integrated provider…" : "No integrated providers for this kind"} />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((o) => (
+                  <SelectItem key={o.slug} value={o.slug}>
+                    {o.name} <span className="text-muted-foreground">({o.slug})</span>
+                  </SelectItem>
+                ))}
+                <SelectItem value={CUSTOM_SLUG}>Other (custom slug)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+          {isCustom && (
+            <div>
+              <Label>Slug</Label>
+              <Input
+                value={customSlug}
+                onChange={(e) => setCustomSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                placeholder="my-vendor"
+              />
+            </div>
+          )}
           <div>
             <Label>Display name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="OpenAI" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
+          {!isCustom && pickedSlug && (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Slug: <code className="font-mono">{effectiveSlug}</code>.{" "}
+              Suggested models — you&apos;ll add prices for them after creating the provider:
+              <ul className="ml-4 mt-1 list-disc">
+                {options.find((o) => o.slug === pickedSlug)?.models.slice(0, 6).map((m) => (
+                  <li key={m.variant}><code className="font-mono">{m.variant}</code> — {m.label}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || !slug || !name}>{busy ? "Creating…" : "Create"}</Button>
+          <Button onClick={submit} disabled={busy || !effectiveSlug || !name}>{busy ? "Creating…" : "Create"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -402,32 +607,60 @@ function NewProviderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
 
 function AddPriceDialog({
   providerId,
+  kind,
   onClose,
   onCreated,
 }: {
   providerId: number;
+  kind: ProviderKind;
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const [catalog, setCatalog] = useState<IntegratedCatalog | null>(null);
   const [unit, setUnit] = useState<PriceUnit>("per_minute");
   const [variant, setVariant] = useState("");
-  // Capture as decimal USD per unit, convert to micros on submit.
+  const [customVariant, setCustomVariant] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<IntegratedCatalog>("/api/admin/cost-providers/integrated").then(setCatalog).catch(() => {});
+  }, []);
+
+  // Best-effort: find the integrated provider matching this DB provider's kind.
+  // We can't easily map providerId → slug without a fetch, so we just show
+  // every model variant catalogued for the kind. Picking auto-fills unit.
+  const suggestedModels: IntegratedModel[] = useMemo(() => {
+    if (!catalog) return [];
+    return (catalog[kind] ?? []).flatMap((p) => p.models);
+  }, [catalog, kind]);
+
+  function pickModel(v: string) {
+    setVariant(v);
+    if (v === CUSTOM_SLUG) {
+      setCustomVariant("");
+      return;
+    }
+    const found = suggestedModels.find((m) => m.variant === v);
+    if (found) setUnit(found.suggested_unit);
+  }
+
+  const isCustomVariant = variant === CUSTOM_SLUG;
+  const effectiveVariant = isCustomVariant ? customVariant || null : variant || null;
 
   async function submit() {
     setBusy(true); setError(null);
     try {
       const usd = Number(pricePerUnit);
       if (!Number.isFinite(usd) || usd < 0) throw new Error("price must be a positive number");
-      const price_micros = Math.round(usd * 1_000_000);
+      const price_micros = Math.round(usd * MICROS_PER_UNIT);
       await api(`/api/admin/cost-providers/${providerId}/prices`, {
         method: "POST",
         body: JSON.stringify({
           unit,
-          variant: variant || null,
+          variant: effectiveVariant,
           price_micros,
           notes: notes || null,
         }),
@@ -440,39 +673,57 @@ function AddPriceDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add price</DialogTitle>
+          <DialogTitle>Add model price</DialogTitle>
           <DialogDescription>
-            Enter the price in USD per unit (e.g. <code>0.18</code> for $0.18/min, or <code>0.0025</code> for
-            $0.0025 per 1k tokens). Stored internally as micros.
+            Pick the model variant (e.g. <code>gpt-4o</code>, <code>eleven_turbo_v2_5</code>) and enter the
+            vendor&apos;s price in USD per unit. Stored internally as micros.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>Unit</Label>
-            <Select value={unit} onValueChange={(v) => setUnit(v as PriceUnit)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Label>Model</Label>
+            <Select value={variant} onValueChange={pickModel}>
+              <SelectTrigger><SelectValue placeholder="Pick a model…" /></SelectTrigger>
               <SelectContent>
-                {UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                {suggestedModels.map((m) => (
+                  <SelectItem key={m.variant} value={m.variant}>
+                    {m.label} <span className="text-muted-foreground">({m.variant})</span>
+                  </SelectItem>
+                ))}
+                <SelectItem value={CUSTOM_SLUG}>Other (custom variant)</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Variant (optional)</Label>
-            <Input value={variant} onChange={(e) => setVariant(e.target.value)} placeholder="gpt-4o" />
-          </div>
-          <div>
-            <Label>Price (USD)</Label>
-            <Input
-              type="text"
-              inputMode="decimal"
-              value={pricePerUnit}
-              onChange={(e) => setPricePerUnit(e.target.value)}
-              placeholder="0.18"
-            />
+          {isCustomVariant && (
+            <div>
+              <Label>Variant name</Label>
+              <Input value={customVariant} onChange={(e) => setCustomVariant(e.target.value)} placeholder="my-model-id" />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Unit</Label>
+              <Select value={unit} onValueChange={(v) => setUnit(v as PriceUnit)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Price (USD)</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={pricePerUnit}
+                onChange={(e) => setPricePerUnit(e.target.value)}
+                placeholder="0.18"
+              />
+            </div>
           </div>
           <div>
             <Label>Notes</Label>
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="$0.18/min outbound" />
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. $2.50 per 1M input tokens" />
           </div>
           {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
         </div>
@@ -499,10 +750,7 @@ function NewMarkupDialog({ onClose, onCreated }: { onClose: () => void; onCreate
     try {
       const n = Number(value);
       if (!Number.isFinite(n) || n < 0) throw new Error("value must be a positive number");
-      // For percentage: input is 25 (meaning 25%); we store 25_000_000 micros.
-      // For fixed_per_minute / fixed_per_unit: input is USD; we store usd * 1M.
-      const value_micros =
-        markupKind === "percentage" ? Math.round(n * 1_000_000) : Math.round(n * 1_000_000);
+      const value_micros = Math.round(n * MICROS_PER_UNIT);
       await api("/api/admin/markup-rules", {
         method: "POST",
         body: JSON.stringify({
@@ -523,7 +771,7 @@ function NewMarkupDialog({ onClose, onCreated }: { onClose: () => void; onCreate
         <DialogHeader>
           <DialogTitle>New markup rule</DialogTitle>
           <DialogDescription>
-            Markup applied on top of raw provider cost. Tenant scope beats kind beats global; within a scope, higher
+            Markup applied on top of raw provider cost. Tenant beats kind beats global; within a scope, higher
             priority wins.
           </DialogDescription>
         </DialogHeader>
@@ -540,10 +788,21 @@ function NewMarkupDialog({ onClose, onCreated }: { onClose: () => void; onCreate
                 </SelectContent>
               </Select>
             </div>
-            {scopeKind !== "global" && (
+            {scopeKind === "kind" && (
               <div>
-                <Label>{scopeKind === "kind" ? "Kind (llm/tts/…)" : "Tenant id"}</Label>
-                <Input value={scopeValue} onChange={(e) => setScopeValue(e.target.value)} />
+                <Label>Provider kind</Label>
+                <Select value={scopeValue} onValueChange={setScopeValue}>
+                  <SelectTrigger><SelectValue placeholder="Pick a kind…" /></SelectTrigger>
+                  <SelectContent>
+                    {KINDS.map((k) => <SelectItem key={k.id} value={k.id}>{k.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {scopeKind === "tenant" && (
+              <div>
+                <Label>Tenant id</Label>
+                <Input value={scopeValue} onChange={(e) => setScopeValue(e.target.value)} placeholder="14" />
               </div>
             )}
           </div>

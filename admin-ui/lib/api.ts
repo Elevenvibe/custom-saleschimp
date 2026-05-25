@@ -166,6 +166,21 @@ export type CostProviderPrice = {
   notes: string | null;
 };
 
+export type IntegratedModel = {
+  variant: string;
+  label: string;
+  suggested_unit: PriceUnit;
+};
+
+export type IntegratedProvider = {
+  slug: string;
+  name: string;
+  homepage: string;
+  models: IntegratedModel[];
+};
+
+export type IntegratedCatalog = Record<ProviderKind, IntegratedProvider[]>;
+
 export type MarkupRule = {
   id: number;
   scope_kind: "global" | "kind" | "tenant";

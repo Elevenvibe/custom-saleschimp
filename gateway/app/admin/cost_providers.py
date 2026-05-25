@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
+from app.billing.integrated_catalog import INTEGRATED_PROVIDERS
 from app.billing.models import CostProvider, CostProviderPrice, MarkupRule
 from app.db import get_session
 
@@ -184,6 +185,20 @@ async def list_providers(
         )
     ).scalars().all()
     return [_provider_out(p) for p in rows]
+
+
+@router.get("/integrated")
+async def list_integrated_providers(
+    _claims: Annotated[dict, Depends(require_super_admin)],
+) -> dict:
+    """The hand-curated catalog of providers Dograh can speak to today.
+
+    The admin UI uses this to populate the "New provider" dropdown — picking
+    from a known list (slug + name + suggested models) cuts the typo risk
+    that would otherwise cause missed cost lookups at billing time. Update
+    app/billing/integrated_catalog.py whenever a new integration ships.
+    """
+    return INTEGRATED_PROVIDERS
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ProviderOut)
