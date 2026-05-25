@@ -64,6 +64,12 @@ services:
       GATEWAY_BOOTSTRAP_DEMO_TENANT_PASSWORD: "${GATEWAY_BOOTSTRAP_DEMO_TENANT_PASSWORD:-}"
       GATEWAY_BOOTSTRAP_DEMO_TENANT_FULL_NAME: "${GATEWAY_BOOTSTRAP_DEMO_TENANT_FULL_NAME:-}"
       GATEWAY_BOOTSTRAP_DEMO_TENANT_COMPANY_NAME: "${GATEWAY_BOOTSTRAP_DEMO_TENANT_COMPANY_NAME:-}"
+      # Background price-sync loop: when enabled, every interval_seconds the
+      # gateway iterates active cost providers and upserts catalog reference
+      # prices for any (variant, unit) without a row. Safe to run frequently —
+      # idempotent and per-provider work is small.
+      GATEWAY_PRICE_SYNC_ENABLED: "${GATEWAY_PRICE_SYNC_ENABLED:-false}"
+      GATEWAY_PRICE_SYNC_INTERVAL_SECONDS: "${GATEWAY_PRICE_SYNC_INTERVAL_SECONDS:-60}"
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8080"
     depends_on:

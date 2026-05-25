@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     proxy_connect_timeout: float = 5.0
     proxy_read_timeout: float = 60.0
 
+    # Background price sync. Iterates active cost providers on an interval and
+    # upserts catalog reference prices for any (variant, unit) without a row.
+    # Opt-in — leave false on environments where the catalog drift doesn't
+    # matter or you don't want background DB writes.
+    price_sync_enabled: bool = False
+    price_sync_interval_seconds: int = 60
+
     # CORS allowlist for browser apps that call the gateway from a different
     # origin (admin UI + customer app). Comma-separated.
     cors_origins: str = (

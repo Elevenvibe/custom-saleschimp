@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import models as _models  # noqa: F401
 from app.admin.routes import router as admin_router
 from app.auth.bootstrap import bootstrap_super_admin_if_needed
+from app.billing.cron import start_price_sync_loop, stop_price_sync_loop
 from app.customer_auth.bootstrap import bootstrap_demo_tenant_if_needed
 from app.auth.routes import router as auth_router
 from app.config import settings
@@ -41,7 +42,9 @@ async def lifespan(_: FastAPI):
     log.info("gateway.start", env=settings.environment)
     await bootstrap_super_admin_if_needed()
     await bootstrap_demo_tenant_if_needed()
+    await start_price_sync_loop()
     yield
+    await stop_price_sync_loop()
     log.info("gateway.stop")
 
 
