@@ -1,0 +1,33 @@
+{% extends "_base.html" %}
+{% block title %}Verifying — SalesChimp{% endblock %}
+{% block body %}
+  <h1>Verifying your email…</h1>
+  <p class="muted">This only takes a moment.</p>
+  <div id="out"></div>
+
+  <script>
+    const token = {{ token | tojson }};
+    const out = document.getElementById('out');
+    (async () => {
+      if (!token) {
+        out.innerHTML = '<div class="err">No verification token in this link.</div>';
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/verify?token=' + encodeURIComponent(token));
+        const data = await res.json();
+        if (!res.ok) {
+          out.innerHTML = '<div class="err">' + (data.detail || res.statusText) + '</div>';
+          return;
+        }
+        // Stash the JWT and send the user to their workspace.
+        localStorage.setItem('sc_customer_token', data.access_token);
+        out.innerHTML =
+          '<div class="ok">Verified — your workspace is ready. Redirecting…</div>';
+        setTimeout(() => { window.location.replace(data.redirect || '/'); }, 700);
+      } catch (err) {
+        out.innerHTML = '<div class="err">' + err.message + '</div>';
+      }
+    })();
+  </script>
+{% endblock %}
