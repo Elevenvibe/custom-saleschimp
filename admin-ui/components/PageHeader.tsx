@@ -1,3 +1,14 @@
+"use client";
+
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+
 export function PageHeader({
   title,
   description,
@@ -8,12 +19,22 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-slate-200 bg-white px-8 py-5">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-        {description && <p className="text-sm text-slate-500">{description}</p>}
+    <header className="flex shrink-0 flex-col gap-1 border-b bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+      <div className="flex h-14 items-center gap-2 px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-auto" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbPage>{title}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        <div className="ml-auto">{action}</div>
       </div>
-      {action}
-    </div>
+      {description && (
+        <div className="px-6 pb-3 text-sm text-muted-foreground">{description}</div>
+      )}
+    </header>
   );
 }

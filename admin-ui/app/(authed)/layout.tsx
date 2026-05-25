@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getToken } from "@/lib/api";
-import { Sidebar } from "@/components/Sidebar";
 
 export default function AuthedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -18,13 +20,13 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
   }, [router]);
 
   if (!ready) {
-    return <div className="p-6 text-sm text-slate-500">Loading…</div>;
+    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">{children}</main>
-    </div>
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>{children}</SidebarInset>
+    </SidebarProvider>
   );
 }
