@@ -24,6 +24,7 @@ from app.auth.bootstrap import bootstrap_super_admin_if_needed
 from app.auth.routes import router as auth_router
 from app.config import settings
 from app.proxy.routes import router as proxy_router
+from app.proxy.ws import router as ws_proxy_router
 
 log = structlog.get_logger()
 
@@ -61,6 +62,11 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(admin_router, prefix="/api/admin")
 
-# Catch-all reverse proxy. MUST be mounted last — FastAPI matches in registration
-# order for ambiguous routes.
+# WebSocket proxy for /api/v1/* upgrade requests. Mounted before the HTTP
+# catch-all so the upgrade is routed correctly; the HTTP proxy still handles
+# everything else on /api/v1/*.
+app.include_router(ws_proxy_router)
+
+# Catch-all HTTP reverse proxy. MUST be mounted last — FastAPI matches in
+# registration order for ambiguous routes.
 app.include_router(proxy_router)
