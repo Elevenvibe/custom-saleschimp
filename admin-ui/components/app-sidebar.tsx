@@ -25,6 +25,7 @@ import {
   Mail,
   Send,
   Sparkles,
+  Coins,
 } from "lucide-react";
 
 const nav: NavItem[] = [
@@ -34,6 +35,7 @@ const nav: NavItem[] = [
   { title: "Invites", url: "/invites", icon: <Send /> },
   { title: "Audit log", url: "/audit", icon: <ScrollText /> },
   { title: "Packages", url: "/packages", icon: <Package /> },
+  { title: "Cost catalog", url: "/cost-catalog", icon: <Coins /> },
   { title: "Plugins", url: "/plugins", icon: <PlugZap /> },
   { title: "Email providers", url: "/email-providers", icon: <Mail /> },
 ];

@@ -6,6 +6,7 @@ Add new model modules here whenever a new domain is introduced.
 
 from app.audit.models import AuditLog
 from app.auth.models import PlatformUser
+from app.billing.models import CostProvider, CostProviderPrice, MarkupRule
 from app.email.models import EmailProviderConfig
 from app.packages.models import Package, PackagePlugin
 from app.plugins.models import InstalledPlugin
@@ -21,4 +22,7 @@ __all__ = [
     "Package",
     "PackagePlugin",
     "InstalledPlugin",
+    "CostProvider",
+    "CostProviderPrice",
+    "MarkupRule",
 ]
