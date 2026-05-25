@@ -40,10 +40,13 @@ echo ">>> Checking out dograh @ $TAG"
 git -C dograh checkout "$TAG"
 git -C dograh submodule update --init --recursive
 
-echo ">>> Aligning UPSTREAM_TAG in Dockerfile.ui and docker-compose.override.yaml"
+echo ">>> Aligning UPSTREAM_VERSION in Dockerfile.ui and docker-compose.override.yaml"
+# Published image tags use the bare version (1.31.0), not the git tag
+# (dograh-v1.31.0). Strip the prefix for the build args.
+VERSION="${TAG#dograh-v}"
 # In-place edit with portable sed (works on GNU sed; on macOS use 'sed -i ""').
-sed -i "s|^ARG UPSTREAM_TAG=.*|ARG UPSTREAM_TAG=$TAG|" Dockerfile.ui
-sed -i "s|UPSTREAM_TAG: dograh-v[0-9.]\+|UPSTREAM_TAG: $TAG|" docker-compose.override.yaml
+sed -i "s|^ARG UPSTREAM_VERSION=.*|ARG UPSTREAM_VERSION=$VERSION|" Dockerfile.ui
+sed -i "s|UPSTREAM_VERSION: [0-9.]\+|UPSTREAM_VERSION: $VERSION|" docker-compose.override.yaml
 
 echo ">>> Done. Submodule pinned to $TAG."
 echo ""

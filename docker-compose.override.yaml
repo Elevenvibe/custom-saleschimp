@@ -9,11 +9,12 @@
 services:
   ui:
     # Override the upstream image with a locally-built one that bakes in
-    # custom/ui/public/ overlays. The UPSTREAM_TAG build arg should match
-    # the dograh/ submodule pin (see scripts/update-dograh.sh).
+    # custom/ui/public/ overlays. UPSTREAM_VERSION must match the dograh/
+    # submodule version (without the dograh-v prefix). The
+    # scripts/update-dograh.sh helper keeps these aligned.
     image: custom-saleschimp/dograh-ui:latest
     build:
       context: .
       dockerfile: Dockerfile.ui
       args:
-        UPSTREAM_TAG: dograh-v1.31.0
+        UPSTREAM_VERSION: 1.31.0

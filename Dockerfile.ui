@@ -1,10 +1,11 @@
 # Custom UI image: upstream dograh-ui + your branding overlay.
 #
-# Bump UPSTREAM_TAG in lockstep with the dograh/ submodule pin. The
-# scripts/update-dograh.sh helper does this for you.
+# Bump UPSTREAM_VERSION in lockstep with the dograh/ submodule pin. The
+# scripts/update-dograh.sh helper does this for you. Note: published image
+# tags use the bare version (e.g. 1.31.0), not the git tag (dograh-v1.31.0).
 
-ARG UPSTREAM_TAG=dograh-v1.31.0
-FROM ghcr.io/dograh-hq/dograh-ui:${UPSTREAM_TAG}
+ARG UPSTREAM_VERSION=1.31.0
+FROM ghcr.io/dograh-hq/dograh-ui:${UPSTREAM_VERSION}
 
 # Overlay branding assets into /app/public/. Any file in custom/ui/public/
 # with a name matching an upstream file replaces it; new files are added.
