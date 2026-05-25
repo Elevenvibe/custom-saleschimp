@@ -4,14 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   api,
+  type AvailableModelsRes,
   type CostProvider,
   type CostProviderPrice,
+  type CredentialsStatus,
   type IntegratedCatalog,
-  type IntegratedModel,
   type IntegratedProvider,
   type MarkupRule,
   type PriceUnit,
   type ProviderKind,
+  type SyncPricesRes,
 } from "@/lib/api";
 import { PageDescription, PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +36,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronDown, ChevronRight, ExternalLink, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  KeyRound,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 
 const KINDS: { id: ProviderKind; label: string }[] = [
   { id: "llm", label: "LLM" },
@@ -370,7 +379,7 @@ function ProviderRow({
       {open && (
         <tr className="bg-muted/20">
           <td colSpan={6} className="px-6 py-3">
-            <ProviderModels providerId={provider.id} kind={provider.kind} markup={markup} />
+            <ProviderModels provider={provider} markup={markup} />
           </td>
         </tr>
       )}
@@ -379,32 +388,59 @@ function ProviderRow({
 }
 
 function ProviderModels({
-  providerId,
-  kind,
+  provider,
   markup,
 }: {
-  providerId: number;
-  kind: ProviderKind;
+  provider: CostProvider;
   markup: MarkupRule | null;
 }) {
   const [prices, setPrices] = useState<CostProviderPrice[] | null>(null);
+  const [creds, setCreds] = useState<CredentialsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncSummary, setSyncSummary] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showCreds, setShowCreds] = useState(false);
 
-  function load() {
-    api<CostProviderPrice[]>(`/api/admin/cost-providers/${providerId}/prices`)
+  function loadPrices() {
+    api<CostProviderPrice[]>(`/api/admin/cost-providers/${provider.id}/prices`)
       .then(setPrices)
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [providerId]);
+  function loadCreds() {
+    api<CredentialsStatus>(`/api/admin/cost-providers/${provider.id}/credentials`)
+      .then(setCreds)
+      .catch(() => {});
+  }
+  useEffect(() => {
+    loadPrices();
+    loadCreds();
+  }, [provider.id]);
 
   async function remove(id: number) {
     if (!confirm("Delete this model price?")) return;
     try {
-      await api(`/api/admin/cost-providers/${providerId}/prices/${id}`, { method: "DELETE" });
-      load();
+      await api(`/api/admin/cost-providers/${provider.id}/prices/${id}`, { method: "DELETE" });
+      loadPrices();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  async function sync() {
+    setSyncing(true);
+    setSyncSummary(null);
+    setError(null);
+    try {
+      const r = await api<SyncPricesRes>(`/api/admin/cost-providers/${provider.id}/sync-prices`, {
+        method: "POST",
+      });
+      setSyncSummary(`Synced ${r.upserted} new prices · ${r.skipped} already existed.`);
+      loadPrices();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -416,15 +452,29 @@ function ProviderModels({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs text-muted-foreground">
           <span className="font-medium uppercase tracking-wide">Models</span>{" "}
-          · markup applied to <code className="font-mono">{kind}</code>: <span className="font-mono">{markupSummary}</span>
+          · markup applied to <code className="font-mono">{provider.kind}</code>:{" "}
+          <span className="font-mono">{markupSummary}</span>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
-          <Plus className="h-4 w-4" /> Add model
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowCreds(true)}>
+            <KeyRound className="h-4 w-4" />
+            {creds?.configured ? "Update API key" : "Configure API key"}
+            {creds?.configured && <Badge variant="secondary" className="ml-1 px-1.5 py-0">set</Badge>}
+          </Button>
+          <Button size="sm" variant="outline" onClick={sync} disabled={syncing}>
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Sync prices
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
+            <Plus className="h-4 w-4" /> Add model
+          </Button>
+        </div>
       </div>
+      {syncSummary && (
+        <div className="rounded-md bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{syncSummary}</div>
+      )}
       {error && <div className="text-xs text-destructive">{error}</div>}
       <div className="rounded border bg-background">
         <table className="w-full text-xs">
@@ -441,7 +491,14 @@ function ProviderModels({
           </thead>
           <tbody>
             {!prices && <tr><td colSpan={7} className="px-3 py-3 text-center text-muted-foreground">Loading…</td></tr>}
-            {prices?.length === 0 && <tr><td colSpan={7} className="px-3 py-3 text-center text-muted-foreground">No models priced yet.</td></tr>}
+            {prices?.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">
+                  No models priced yet — try <span className="font-medium">Sync prices</span> to seed from the
+                  integrated catalog, or <span className="font-medium">Add model</span> for a custom one.
+                </td>
+              </tr>
+            )}
             {prices?.map((p) => {
               const m = applyMarkup(p.price_micros, markup);
               return (
@@ -467,16 +524,109 @@ function ProviderModels({
       </div>
       {showAdd && (
         <AddPriceDialog
-          providerId={providerId}
-          kind={kind}
+          provider={provider}
           onClose={() => setShowAdd(false)}
           onCreated={() => {
             setShowAdd(false);
-            load();
+            loadPrices();
+          }}
+        />
+      )}
+      {showCreds && (
+        <CredentialsDialog
+          provider={provider}
+          configured={creds?.configured ?? false}
+          onClose={() => setShowCreds(false)}
+          onSaved={() => {
+            setShowCreds(false);
+            loadCreds();
           }}
         />
       )}
     </div>
+  );
+}
+
+function CredentialsDialog({
+  provider,
+  configured,
+  onClose,
+  onSaved,
+}: {
+  provider: CostProvider;
+  configured: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/cost-providers/${provider.id}/credentials`, {
+        method: "PUT",
+        body: JSON.stringify({ api_key: apiKey }),
+      });
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear() {
+    if (!confirm("Remove stored credentials for this provider?")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/cost-providers/${provider.id}/credentials`, { method: "DELETE" });
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{provider.name} credentials</DialogTitle>
+          <DialogDescription>
+            Stored Fernet-encrypted in the Control DB. Used to fetch the live model list when adding prices.
+            Live-fetch adapter exists for OpenAI-compatible vendors (openai, groq, cerebras); others fall back to
+            the integrated catalog.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>API key</Label>
+            <Input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={configured ? "•••• (replace existing)" : "sk-…"}
+              autoComplete="off"
+            />
+          </div>
+          {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+        </div>
+        <DialogFooter>
+          {configured && (
+            <Button variant="ghost" onClick={clear} disabled={busy} className="mr-auto text-destructive">
+              Remove
+            </Button>
+          )}
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={save} disabled={busy || !apiKey}>{busy ? "Saving…" : "Save"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -606,17 +756,19 @@ function NewProviderDialog({
 }
 
 function AddPriceDialog({
-  providerId,
-  kind,
+  provider,
   onClose,
   onCreated,
 }: {
-  providerId: number;
-  kind: ProviderKind;
+  provider: CostProvider;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [catalog, setCatalog] = useState<IntegratedCatalog | null>(null);
+  // Available models come from /available-models — live fetch when creds are
+  // configured for an OpenAI-compatible adapter, catalog otherwise. Always
+  // scoped to THIS provider's slug.
+  const [available, setAvailable] = useState<AvailableModelsRes | null>(null);
+  const [availableError, setAvailableError] = useState<string | null>(null);
   const [unit, setUnit] = useState<PriceUnit>("per_minute");
   const [variant, setVariant] = useState("");
   const [customVariant, setCustomVariant] = useState("");
@@ -626,27 +778,23 @@ function AddPriceDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<IntegratedCatalog>("/api/admin/cost-providers/integrated").then(setCatalog).catch(() => {});
-  }, []);
+    api<AvailableModelsRes>(`/api/admin/cost-providers/${provider.id}/available-models`)
+      .then((r) => {
+        setAvailable(r);
+        // Default unit to something sensible for the kind.
+        const defaults: Record<ProviderKind, PriceUnit> = {
+          llm: "per_1k_tokens",
+          embedding: "per_1k_tokens",
+          tts: "per_1k_chars",
+          stt: "per_minute",
+          telephony: "per_minute",
+        };
+        setUnit(defaults[provider.kind]);
+      })
+      .catch((e) => setAvailableError(e.message));
+  }, [provider.id, provider.kind]);
 
-  // Best-effort: find the integrated provider matching this DB provider's kind.
-  // We can't easily map providerId → slug without a fetch, so we just show
-  // every model variant catalogued for the kind. Picking auto-fills unit.
-  const suggestedModels: IntegratedModel[] = useMemo(() => {
-    if (!catalog) return [];
-    return (catalog[kind] ?? []).flatMap((p) => p.models);
-  }, [catalog, kind]);
-
-  function pickModel(v: string) {
-    setVariant(v);
-    if (v === CUSTOM_SLUG) {
-      setCustomVariant("");
-      return;
-    }
-    const found = suggestedModels.find((m) => m.variant === v);
-    if (found) setUnit(found.suggested_unit);
-  }
-
+  const models = available?.models ?? [];
   const isCustomVariant = variant === CUSTOM_SLUG;
   const effectiveVariant = isCustomVariant ? customVariant || null : variant || null;
 
@@ -656,7 +804,7 @@ function AddPriceDialog({
       const usd = Number(pricePerUnit);
       if (!Number.isFinite(usd) || usd < 0) throw new Error("price must be a positive number");
       const price_micros = Math.round(usd * MICROS_PER_UNIT);
-      await api(`/api/admin/cost-providers/${providerId}/prices`, {
+      await api(`/api/admin/cost-providers/${provider.id}/prices`, {
         method: "POST",
         body: JSON.stringify({
           unit,
@@ -673,21 +821,40 @@ function AddPriceDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add model price</DialogTitle>
+          <DialogTitle>Add model price for {provider.name}</DialogTitle>
           <DialogDescription>
-            Pick the model variant (e.g. <code>gpt-4o</code>, <code>eleven_turbo_v2_5</code>) and enter the
-            vendor&apos;s price in USD per unit. Stored internally as micros.
+            Pick the model and enter the vendor&apos;s price in USD per unit. Models come from{" "}
+            {available?.source === "live" ? (
+              <span><Badge variant="default" className="px-1.5 py-0">live</Badge> {provider.name}&apos;s API.</span>
+            ) : (
+              <span><Badge variant="secondary" className="px-1.5 py-0">catalog</Badge> the integrated catalog.</span>
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {availableError && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              Couldn&apos;t load models: {availableError}
+            </div>
+          )}
+          {available?.notes && (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              {available.notes}
+            </div>
+          )}
           <div>
             <Label>Model</Label>
-            <Select value={variant} onValueChange={pickModel}>
-              <SelectTrigger><SelectValue placeholder="Pick a model…" /></SelectTrigger>
+            <Select value={variant} onValueChange={setVariant}>
+              <SelectTrigger>
+                <SelectValue placeholder={available ? "Pick a model…" : "Loading…"} />
+              </SelectTrigger>
               <SelectContent>
-                {suggestedModels.map((m) => (
+                {models.map((m) => (
                   <SelectItem key={m.variant} value={m.variant}>
-                    {m.label} <span className="text-muted-foreground">({m.variant})</span>
+                    {m.label ?? m.variant}{" "}
+                    {m.label && m.label !== m.variant && (
+                      <span className="text-muted-foreground">({m.variant})</span>
+                    )}
                   </SelectItem>
                 ))}
                 <SelectItem value={CUSTOM_SLUG}>Other (custom variant)</SelectItem>
@@ -697,7 +864,11 @@ function AddPriceDialog({
           {isCustomVariant && (
             <div>
               <Label>Variant name</Label>
-              <Input value={customVariant} onChange={(e) => setCustomVariant(e.target.value)} placeholder="my-model-id" />
+              <Input
+                value={customVariant}
+                onChange={(e) => setCustomVariant(e.target.value)}
+                placeholder="my-model-id"
+              />
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
@@ -729,7 +900,9 @@ function AddPriceDialog({
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || !pricePerUnit}>{busy ? "Saving…" : "Add price"}</Button>
+          <Button onClick={submit} disabled={busy || !pricePerUnit || !effectiveVariant}>
+            {busy ? "Saving…" : "Add price"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

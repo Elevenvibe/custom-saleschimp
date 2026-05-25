@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
-from app.billing.integrated_catalog import INTEGRATED_PROVIDERS
+from app.billing.adapters import AdapterError, get_adapter
+from app.billing.integrated_catalog import INTEGRATED_PROVIDERS, find_provider
 from app.billing.models import CostProvider, CostProviderPrice, MarkupRule
 from app.db import get_session
+from app.email.crypto import decrypt_dict, encrypt_dict
 
 router = APIRouter(prefix="/cost-providers", tags=["admin:billing"])
 markup_router = APIRouter(prefix="/markup-rules", tags=["admin:billing"])
@@ -359,6 +361,223 @@ async def delete_price(
         target_id=str(price_id),
     )
     await session.commit()
+
+
+# --- Credentials + live model fetch + sync prices -------------------------
+
+
+class CredentialsIn(BaseModel):
+    api_key: str = Field(min_length=1)
+
+
+class CredentialsStatusOut(BaseModel):
+    configured: bool
+
+
+class AvailableModelOut(BaseModel):
+    variant: str
+    label: str | None
+    source: Literal["live", "catalog"]
+
+
+class AvailableModelsOut(BaseModel):
+    source: Literal["live", "catalog"]
+    models: list[AvailableModelOut]
+    notes: str | None = None
+
+
+class SyncPricesOut(BaseModel):
+    upserted: int
+    skipped: int
+    notes: str | None = None
+
+
+@router.get("/{provider_id}/credentials", response_model=CredentialsStatusOut)
+async def get_credentials_status(
+    provider_id: int,
+    _claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CredentialsStatusOut:
+    """Boolean only — secrets never come back out of the API."""
+    row = await session.get(CostProvider, provider_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "provider not found")
+    return CredentialsStatusOut(configured=row.credentials_encrypted is not None)
+
+
+@router.put("/{provider_id}/credentials", response_model=CredentialsStatusOut)
+async def set_credentials(
+    provider_id: int,
+    body: CredentialsIn,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CredentialsStatusOut:
+    row = await session.get(CostProvider, provider_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "provider not found")
+    row.credentials_encrypted = encrypt_dict({"api_key": body.api_key})
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=_actor_id(claims),
+        action="admin.cost_provider.credentials.set",
+        target_kind="cost_provider",
+        target_id=str(provider_id),
+    )
+    await session.commit()
+    return CredentialsStatusOut(configured=True)
+
+
+@router.delete("/{provider_id}/credentials", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_credentials(
+    provider_id: int,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    row = await session.get(CostProvider, provider_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "provider not found")
+    row.credentials_encrypted = None
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=_actor_id(claims),
+        action="admin.cost_provider.credentials.clear",
+        target_kind="cost_provider",
+        target_id=str(provider_id),
+    )
+    await session.commit()
+
+
+@router.get("/{provider_id}/available-models", response_model=AvailableModelsOut)
+async def list_available_models(
+    provider_id: int,
+    _claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AvailableModelsOut:
+    """Returns models for THIS provider only.
+
+    Prefers a live fetch from the vendor when:
+      (a) we have a live adapter for the provider's slug, and
+      (b) credentials are configured.
+    Otherwise falls back to the static integrated catalog. Always scoped to
+    this provider's slug — never bleeds in models from a sibling provider in
+    the same kind.
+    """
+    row = await session.get(CostProvider, provider_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "provider not found")
+
+    # Try live first if creds present.
+    if row.credentials_encrypted is not None:
+        try:
+            creds = decrypt_dict(row.credentials_encrypted)
+            adapter = get_adapter(row.slug, creds)
+            result = await adapter.fetch_models()
+            return AvailableModelsOut(
+                source="live",
+                models=[
+                    AvailableModelOut(variant=m.variant, label=m.label, source="live")
+                    for m in result.models
+                ],
+                notes=result.notes,
+            )
+        except AdapterError as e:
+            # Fall through to catalog with a note explaining why.
+            catalog_models = _catalog_models_for(row.slug)
+            return AvailableModelsOut(
+                source="catalog",
+                models=catalog_models,
+                notes=f"live fetch failed ({e}); showing catalog",
+            )
+
+    # No creds → catalog.
+    return AvailableModelsOut(
+        source="catalog",
+        models=_catalog_models_for(row.slug),
+        notes="no credentials configured — showing catalog models",
+    )
+
+
+@router.post("/{provider_id}/sync-prices", response_model=SyncPricesOut)
+async def sync_prices(
+    provider_id: int,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SyncPricesOut:
+    """Upsert reference prices from the integrated catalog.
+
+    For each (variant, unit) in the catalog for this provider's slug:
+    if no active price row exists, insert one. Existing prices are left
+    alone so admin overrides aren't blown away. Returns counts.
+
+    True live-pricing fetches (where the vendor exposes a pricing API)
+    can hook here when their adapter implements it.
+    """
+    row = await session.get(CostProvider, provider_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "provider not found")
+
+    catalog_hit = find_provider(row.slug)
+    if catalog_hit is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"provider {row.slug} is not in the integrated catalog — nothing to sync",
+        )
+
+    _kind, integrated = catalog_hit
+    upserted = 0
+    skipped = 0
+    for model in integrated["models"]:
+        for price in model["prices"]:
+            existing_q = await session.execute(
+                select(CostProviderPrice.id)
+                .where(CostProviderPrice.cost_provider_id == provider_id)
+                .where(CostProviderPrice.variant == model["variant"])
+                .where(CostProviderPrice.unit == price["unit"])
+                .where(CostProviderPrice.currency == "USD")
+            )
+            if existing_q.first() is not None:
+                skipped += 1
+                continue
+            session.add(
+                CostProviderPrice(
+                    cost_provider_id=provider_id,
+                    unit=price["unit"],
+                    variant=model["variant"],
+                    price_micros=price["price_micros"],
+                    currency="USD",
+                    notes=f"synced from integrated catalog ({integrated['name']} reference price)",
+                )
+            )
+            upserted += 1
+
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=_actor_id(claims),
+        action="admin.cost_provider.sync_prices",
+        target_kind="cost_provider",
+        target_id=str(provider_id),
+        payload={"upserted": upserted, "skipped": skipped},
+    )
+    await session.commit()
+    return SyncPricesOut(
+        upserted=upserted,
+        skipped=skipped,
+        notes=f"existing prices left alone; {skipped} variant/unit pairs already had a row",
+    )
+
+
+def _catalog_models_for(slug: str) -> list[AvailableModelOut]:
+    hit = find_provider(slug)
+    if hit is None:
+        return []
+    _kind, provider = hit
+    return [
+        AvailableModelOut(variant=m["variant"], label=m["label"], source="catalog")
+        for m in provider["models"]
+    ]
 
 
 # --- Markup rules ---------------------------------------------------------
