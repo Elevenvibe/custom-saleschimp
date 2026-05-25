@@ -129,3 +129,53 @@ export type AdminInvite = {
 };
 
 export type AdminInvitesRes = { total: number; items: AdminInvite[] };
+
+// --- P2.A1 — Cost catalog ------------------------------------------------
+
+export type ProviderKind = "llm" | "tts" | "stt" | "embedding" | "telephony";
+export type PriceUnit =
+  | "per_minute"
+  | "per_input_token"
+  | "per_output_token"
+  | "per_character"
+  | "per_call"
+  | "per_request"
+  | "per_1k_tokens"
+  | "per_1k_chars";
+
+export type CostProvider = {
+  id: number;
+  kind: ProviderKind;
+  slug: string;
+  name: string;
+  currency: string;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CostProviderPrice = {
+  id: number;
+  cost_provider_id: number;
+  unit: PriceUnit;
+  variant: string | null;
+  price_micros: number;
+  currency: string;
+  effective_at: string;
+  notes: string | null;
+};
+
+export type MarkupRule = {
+  id: number;
+  scope_kind: "global" | "kind" | "tenant";
+  scope_value: string | null;
+  markup_kind: "percentage" | "fixed_per_minute" | "fixed_per_unit";
+  value_micros: number;
+  currency: string;
+  priority: number;
+  active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
