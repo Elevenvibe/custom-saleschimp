@@ -29,5 +29,14 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
 
+    # Bootstrap: on startup, if no super-admin exists AND both are set, create one.
+    # Intended for first-boot only; rotate the password from the admin UI after.
+    bootstrap_super_admin_email: str | None = None
+    bootstrap_super_admin_password: str | None = None
+
+    # Reverse proxy timeouts (seconds).
+    proxy_connect_timeout: float = 5.0
+    proxy_read_timeout: float = 60.0
+
 
 settings = Settings()
