@@ -100,7 +100,9 @@ def _serialize(i: Invite) -> InviteOut:
 
 
 def _build_accept_url(token: str) -> str:
-    base = settings.public_base_url.rstrip("/")
+    """Accept link points at the customer app, which calls the gateway's
+    preview + accept-invite endpoints on the user's behalf."""
+    base = settings.customer_app_url.rstrip("/")
     return f"{base}/accept-invite?token={token}"
 
 

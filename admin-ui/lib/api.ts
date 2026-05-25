@@ -114,3 +114,18 @@ export type EmailProvider = {
   created_at: string;
   updated_at: string;
 };
+
+export type AdminInvite = {
+  id: number;
+  tenant_id: number;
+  tenant_name: string;
+  tenant_slug: string;
+  email: string;
+  role: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+  state: "pending" | "accepted" | "expired";
+};
+
+export type AdminInvitesRes = { total: number; items: AdminInvite[] };

@@ -90,9 +90,9 @@ async def create_pending_tenant(
 
 
 def build_verify_url(token: str) -> str:
-    """Verification link the user clicks. In dev this hits the gateway's HTML
-    handler; in prod it goes through nginx to the same handler."""
-    base = settings.public_base_url.rstrip("/")
+    """Verification link the user clicks. Points at the customer Next.js app
+    which calls /api/auth/verify on the gateway and renders the result."""
+    base = settings.customer_app_url.rstrip("/")
     return f"{base}/verify?token={token}"
 
 
