@@ -7,13 +7,13 @@ import { PageDescription, PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -133,7 +133,7 @@ export default function PackagesPage() {
       </div>
 
       {editing !== null && (
-        <PackageDialog
+        <PackageSheet
           mode={editing === "new" ? "create" : "edit"}
           existing={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
@@ -144,7 +144,7 @@ export default function PackagesPage() {
   );
 }
 
-function PackageDialog({
+function PackageSheet({
   mode,
   existing,
   onClose,
@@ -208,17 +208,27 @@ function PackageDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{mode === "create" ? "New package" : `Edit ${existing?.name}`}</DialogTitle>
-          <DialogDescription>
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      {/*
+        Default shadcn SheetContent on `side=right` is `w-3/4 sm:max-w-sm` (max 24rem).
+        Forcing `sm:!max-w-[34rem]` overrides the data-attribute selector that ships
+        in the primitive, giving the form ~40% more breathing room without crowding
+        the page beneath. Body is a flex column so the footer hugs the bottom and
+        the middle scrolls when fields overflow.
+      */}
+      <SheetContent
+        side="right"
+        className="sm:!max-w-[34rem] flex flex-col gap-0"
+      >
+        <SheetHeader>
+          <SheetTitle>{mode === "create" ? "New package" : `Edit ${existing?.name}`}</SheetTitle>
+          <SheetDescription>
             PAYG packages have a monthly price, a bundled minute allowance, and an overage rate. Annual packages
             with <code>Contact sales</code> hide checkout on the customer Plans page and surface a Contact button.
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className="space-y-3">
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-6 pt-2">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Slug</Label>
@@ -330,13 +340,13 @@ function PackageDialog({
           {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
         </div>
 
-        <DialogFooter>
+        <SheetFooter className="border-t">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button onClick={submit} disabled={busy || !slug || !name}>
             {busy ? "Saving…" : mode === "create" ? "Create" : "Save"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
