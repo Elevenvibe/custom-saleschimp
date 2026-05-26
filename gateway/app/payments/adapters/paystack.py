@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 import structlog
 
-from app.config import settings
+from app.payments import config_service
 from app.payments.adapters.base import (
     BillingProvider,
     ChargeResult,
@@ -40,19 +40,25 @@ class PaystackAdapter(BillingProvider):
     slug = "paystack"
 
     def is_configured(self) -> bool:
-        return bool(settings.paystack_secret_key)
+        cfg = config_service.get_sync("paystack")
+        return bool(cfg and cfg.secret_key)
 
-    def _headers(self) -> dict[str, str]:
+    async def _resolved(self):
+        cfg = await config_service.get("paystack")
+        if cfg is None or not cfg.secret_key:
+            raise ProviderError("paystack secret key not configured")
+        return cfg
+
+    def _headers(self, secret_key: str) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {settings.paystack_secret_key}",
+            "Authorization": f"Bearer {secret_key}",
             "Content-Type": "application/json",
         }
 
     async def _post(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
-        if not self.is_configured():
-            raise ProviderError("paystack secret key not configured")
+        cfg = await self._resolved()
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(f"{_API}{path}", json=params, headers=self._headers())
+            resp = await client.post(f"{_API}{path}", json=params, headers=self._headers(cfg.secret_key))
         body = resp.json() if resp.content else {}
         if resp.status_code >= 400 or not body.get("status", True):
             raise ProviderError(f"paystack: {body.get('message', resp.status_code)}")
@@ -110,9 +116,11 @@ class PaystackAdapter(BillingProvider):
         """For Paystack the "confirmation_token" is a transaction
         reference whose charge.success webhook already fired. Verify
         the transaction and pull the authorization_code from it."""
+        cfg = await self._resolved()
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
-                f"{_API}/transaction/verify/{confirmation_token}", headers=self._headers()
+                f"{_API}/transaction/verify/{confirmation_token}",
+                headers=self._headers(cfg.secret_key),
             )
         body = resp.json() if resp.content else {}
         if resp.status_code >= 400 or not body.get("status"):
@@ -157,7 +165,8 @@ class PaystackAdapter(BillingProvider):
         )
 
     def verify_webhook(self, *, payload: bytes, signature: str) -> dict[str, Any]:
-        secret = settings.paystack_secret_key
+        cfg = config_service.get_sync("paystack")
+        secret = cfg.secret_key if cfg else ""
         if not secret:
             raise ProviderError("paystack secret key not configured")
         expected = hmac.new(secret.encode(), payload, hashlib.sha512).hexdigest()

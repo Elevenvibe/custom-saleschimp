@@ -347,6 +347,15 @@ export type AdminProviderInfo = {
   is_default: boolean;
 };
 
+export type PaymentProviderStatus = {
+  provider: "stripe" | "paystack";
+  configured: boolean;
+  source: "db" | "env" | null;
+  publishable_key: string;
+  has_webhook_secret: boolean;
+  secret_key_last4: string | null;
+};
+
 export const MICROS_PER_UNIT = 1_000_000;
 
 export function microsToUsd(micros: number, digits = 2): string {

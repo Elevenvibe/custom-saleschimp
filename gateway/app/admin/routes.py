@@ -9,6 +9,7 @@ from app.admin.packages import router as packages_router
 from app.admin.platform_users import router as platform_users_router
 from app.admin.plugins import router as plugins_router
 from app.admin.price_sync import router as price_sync_router
+from app.admin.payment_providers import router as payment_providers_router
 from app.admin.payments import router as admin_payments_router
 from app.admin.tenants import router as tenants_router
 from app.admin.wallet import router as wallet_router
@@ -27,3 +28,4 @@ router.include_router(markup_router)
 router.include_router(price_sync_router)
 router.include_router(wallet_router)
 router.include_router(admin_payments_router)
+router.include_router(payment_providers_router)

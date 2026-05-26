@@ -22,7 +22,7 @@ from urllib.parse import urlencode
 import httpx
 import structlog
 
-from app.config import settings
+from app.payments import config_service
 from app.payments.adapters.base import (
     BillingProvider,
     ChargeResult,
@@ -62,11 +62,20 @@ class StripeAdapter(BillingProvider):
     slug = "stripe"
 
     def is_configured(self) -> bool:
-        return bool(settings.stripe_secret_key)
+        # Sync check — used by route short-circuits and the public
+        # /providers listing. Reads cached config + env fallback.
+        cfg = config_service.get_sync("stripe")
+        return bool(cfg and cfg.secret_key)
 
-    def _headers(self, idempotency_key: str | None = None) -> dict[str, str]:
+    async def _resolved(self):
+        cfg = await config_service.get("stripe")
+        if cfg is None or not cfg.secret_key:
+            raise ProviderError("stripe secret key not configured")
+        return cfg
+
+    def _headers(self, secret_key: str, idempotency_key: str | None = None) -> dict[str, str]:
         headers = {
-            "Authorization": f"Bearer {settings.stripe_secret_key}",
+            "Authorization": f"Bearer {secret_key}",
             "Content-Type": "application/x-www-form-urlencoded",
         }
         if idempotency_key:
@@ -76,11 +85,12 @@ class StripeAdapter(BillingProvider):
     async def _post(
         self, path: str, params: dict[str, Any], idempotency_key: str | None = None
     ) -> dict[str, Any]:
-        if not self.is_configured():
-            raise ProviderError("stripe secret key not configured")
+        cfg = await self._resolved()
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                f"{_API}{path}", content=_form(params), headers=self._headers(idempotency_key)
+                f"{_API}{path}",
+                content=_form(params),
+                headers=self._headers(cfg.secret_key, idempotency_key),
             )
         body = resp.json() if resp.content else {}
         if resp.status_code >= 400:
@@ -123,10 +133,11 @@ class StripeAdapter(BillingProvider):
         """`confirmation_token` is the Stripe payment_method id the client
         SDK confirmed (via SetupIntent or PaymentIntent). We fetch the
         full object so we can store brand/last4 for the UI."""
+        cfg = await self._resolved()
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
                 f"{_API}/payment_methods/{confirmation_token}",
-                headers=self._headers(),
+                headers=self._headers(cfg.secret_key),
             )
         if resp.status_code >= 400:
             raise ProviderError(f"stripe: cannot fetch payment_method {resp.status_code}")
@@ -178,7 +189,11 @@ class StripeAdapter(BillingProvider):
         )
 
     def verify_webhook(self, *, payload: bytes, signature: str) -> dict[str, Any]:
-        secret = settings.stripe_webhook_secret
+        # Webhook handlers are sync-by-design (FastAPI route awaits the
+        # body, then hands the raw bytes off to us). Use the cached
+        # config + env fallback — see config_service.get_sync.
+        cfg = config_service.get_sync("stripe")
+        secret = cfg.webhook_secret if cfg else ""
         if not secret:
             raise ProviderError("stripe webhook secret not configured")
 
