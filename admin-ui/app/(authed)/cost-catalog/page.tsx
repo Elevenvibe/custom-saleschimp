@@ -52,6 +52,7 @@ const KINDS: { id: ProviderKind; label: string }[] = [
   { id: "tts", label: "TTS" },
   { id: "embedding", label: "Embedding" },
   { id: "telephony", label: "Telephony" },
+  { id: "phone_number", label: "Phone Number" },
 ];
 
 const UNITS: PriceUnit[] = [
@@ -63,6 +64,7 @@ const UNITS: PriceUnit[] = [
   "per_1k_chars",
   "per_call",
   "per_request",
+  "per_month",
 ];
 
 const MICROS_PER_UNIT = 1_000_000;
@@ -134,7 +136,7 @@ export default function CostCatalogPage() {
 
   const byKind = useMemo(() => {
     const m: Record<ProviderKind, CostProvider[]> = {
-      llm: [], tts: [], stt: [], embedding: [], telephony: [],
+      llm: [], tts: [], stt: [], embedding: [], telephony: [], phone_number: [],
     };
     for (const p of providers ?? []) m[p.kind].push(p);
     return m;
@@ -470,7 +472,9 @@ function ProviderModels({
           </Button>
           <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
             <Plus className="h-4 w-4" />{" "}
-            {provider.kind === "telephony" ? "Add countries" : "Add model"}
+            {provider.kind === "telephony" || provider.kind === "phone_number"
+              ? "Add countries"
+              : "Add model"}
           </Button>
         </div>
       </div>
@@ -483,7 +487,9 @@ function ProviderModels({
           <thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-1.5">
-                {provider.kind === "telephony" ? "Country" : "Model (variant)"}
+                {provider.kind === "telephony" || provider.kind === "phone_number"
+                  ? "Country"
+                  : "Model (variant)"}
               </th>
               <th className="px-3 py-1.5">Unit</th>
               <th className="px-3 py-1.5">Original cost</th>
@@ -500,6 +506,8 @@ function ProviderModels({
                 <td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">
                   {provider.kind === "telephony" ? (
                     <>No destinations priced yet — try <span className="font-medium">Sync prices</span> to seed the catalog defaults, or <span className="font-medium">Add countries</span>.</>
+                  ) : provider.kind === "phone_number" ? (
+                    <>No phone-number countries priced yet — try <span className="font-medium">Sync prices</span> to seed the catalog defaults, or <span className="font-medium">Add countries</span>.</>
                   ) : (
                     <>No models priced yet — try <span className="font-medium">Sync prices</span> to seed from the integrated catalog, or <span className="font-medium">Add model</span> for a custom one.</>
                   )}
@@ -771,10 +779,11 @@ function AddPriceDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  // Telephony is a different shape — country multi-select, single per_minute
-  // price applied to every pick (bulk insert).
-  if (provider.kind === "telephony") {
-    return <AddTelephonyDialog provider={provider} onClose={onClose} onCreated={onCreated} />;
+  // Telephony + phone_number both use a country multi-select with a single
+  // price applied to every pick. Different unit (per_minute vs per_month) but
+  // the dialog shape is identical, so route both through AddCountryDialog.
+  if (provider.kind === "telephony" || provider.kind === "phone_number") {
+    return <AddCountryDialog provider={provider} onClose={onClose} onCreated={onCreated} />;
   }
   // Available models come from /available-models — live fetch when creds are
   // configured for an OpenAI-compatible adapter, catalog otherwise. Always
@@ -800,6 +809,7 @@ function AddPriceDialog({
           tts: "per_1k_chars",
           stt: "per_minute",
           telephony: "per_minute",
+          phone_number: "per_month",
         };
         setUnit(defaults[provider.kind]);
       })
@@ -921,7 +931,7 @@ function AddPriceDialog({
   );
 }
 
-function AddTelephonyDialog({
+function AddCountryDialog({
   provider,
   onClose,
   onCreated,
@@ -930,6 +940,13 @@ function AddTelephonyDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  // telephony → per_minute; phone_number → per_month. Drives the price input
+  // label, the existing-row dedupe filter, and the POST body.
+  const unit: PriceUnit = provider.kind === "phone_number" ? "per_month" : "per_minute";
+  const priceLabel = unit === "per_month" ? "Price per month (USD)" : "Price per minute (USD)";
+  const pricePlaceholder = unit === "per_month" ? "1.15" : "0.014";
+  const itemNoun = provider.kind === "phone_number" ? "number" : "destination";
+
   const [countries, setCountries] = useState<Country[] | null>(null);
   const [existing, setExisting] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -947,10 +964,10 @@ function AddTelephonyDialog({
     // so the admin doesn't double-insert.
     api<CostProviderPrice[]>(`/api/admin/cost-providers/${provider.id}/prices`)
       .then((rows) => {
-        setExisting(new Set(rows.filter((r) => r.unit === "per_minute" && r.variant).map((r) => r.variant!)));
+        setExisting(new Set(rows.filter((r) => r.unit === unit && r.variant).map((r) => r.variant!)));
       })
       .catch(() => {});
-  }, [provider.id]);
+  }, [provider.id, unit]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -994,7 +1011,7 @@ function AddTelephonyDialog({
       setProgress({ done: 0, total: codes.length });
       for (let i = 0; i < codes.length; i++) {
         const code = codes[i];
-        // skip ones that already have a per_minute price
+        // skip ones that already have a row at the dialog's unit
         if (existing.has(code)) {
           setProgress({ done: i + 1, total: codes.length });
           continue;
@@ -1002,7 +1019,7 @@ function AddTelephonyDialog({
         await api(`/api/admin/cost-providers/${provider.id}/prices`, {
           method: "POST",
           body: JSON.stringify({
-            unit: "per_minute",
+            unit,
             variant: code,
             price_micros,
             notes: notes || null,
@@ -1022,28 +1039,37 @@ function AddTelephonyDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add destinations for {provider.name}</DialogTitle>
+          <DialogTitle>
+            {provider.kind === "phone_number"
+              ? `Add phone number countries for ${provider.name}`
+              : `Add destinations for ${provider.name}`}
+          </DialogTitle>
           <DialogDescription>
-            Telephony is priced per destination country, not per model. Pick the countries you want to enable and
-            set a single per-minute rate that applies to all of them. Already-priced countries are marked
+            {provider.kind === "phone_number"
+              ? "Phone numbers are rented monthly per country. Pick the countries you want to enable and set the monthly price for all of them. Already-priced countries are marked"
+              : "Telephony is priced per destination country, not per model. Pick the countries you want to enable and set a single per-minute rate that applies to all of them. Already-priced countries are marked"}
             <Badge variant="secondary" className="mx-1 px-1.5 py-0">added</Badge> and skipped on submit.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label>Price per minute (USD)</Label>
+              <Label>{priceLabel}</Label>
               <Input
                 type="text"
                 inputMode="decimal"
                 value={pricePerMinUsd}
                 onChange={(e) => setPricePerMinUsd(e.target.value)}
-                placeholder="0.014"
+                placeholder={pricePlaceholder}
               />
             </div>
             <div>
               <Label>Notes (optional)</Label>
-              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. outbound long-distance" />
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={provider.kind === "phone_number" ? "e.g. local DIDs" : "e.g. outbound long-distance"}
+              />
             </div>
           </div>
           <div>
@@ -1100,7 +1126,7 @@ function AddTelephonyDialog({
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button onClick={submit} disabled={busy || !pricePerMinUsd || picked.size === 0}>
-            {busy ? "Adding…" : `Add ${picked.size} destination${picked.size === 1 ? "" : "s"}`}
+            {busy ? "Adding…" : `Add ${picked.size} ${itemNoun}${picked.size === 1 ? "" : "s"}`}
           </Button>
         </DialogFooter>
       </DialogContent>

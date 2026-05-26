@@ -19,7 +19,7 @@ integration ships in the dograh submodule.
 
 from typing import Literal, TypedDict
 
-ProviderKind = Literal["llm", "tts", "stt", "embedding", "telephony"]
+ProviderKind = Literal["llm", "tts", "stt", "embedding", "telephony", "phone_number"]
 
 
 class ModelPrice(TypedDict):
@@ -70,6 +70,24 @@ def _telephony_countries(
     """
     return [
         {"variant": code, "label": name, "prices": _per_min(price)}
+        for code, (name, price) in sorted(by_code.items())
+    ]
+
+
+def _per_month(usd: float) -> list[ModelPrice]:
+    return [{"unit": "per_month", "price_micros": round(usd * 1_000_000)}]
+
+
+def _phone_number_countries(
+    by_code: dict[str, tuple[str, float]],
+) -> list[IntegratedModel]:
+    """{country_code: (display_name, usd_per_month)} for phone-number rentals.
+
+    Most carriers price local numbers per month per country. Admins can add
+    custom variants like `US:toll-free` via the dialog for non-default types.
+    """
+    return [
+        {"variant": code, "label": name, "prices": _per_month(price)}
         for code, (name, price) in sorted(by_code.items())
     ]
 
@@ -322,6 +340,75 @@ INTEGRATED_PROVIDERS: dict[ProviderKind, list[IntegratedProvider]] = {
                 "GB": ("United Kingdom", 0.0230),
                 "AU": ("Australia", 0.0430),
                 "IN": ("India", 0.0120),
+            }),
+        },
+    ],
+    # Phone number rentals — monthly per country. Mirrors the telephony provider
+    # set since most carriers issue numbers too. Some plans bundle numbers for
+    # free; admins can set price_micros=0 for those or remove the row.
+    "phone_number": [
+        {
+            "slug": "twilio-numbers",
+            "name": "Twilio Numbers",
+            "homepage": "https://www.twilio.com/en-us/phone-numbers/pricing",
+            "models": _phone_number_countries({
+                "US": ("United States (local)", 1.15),
+                "CA": ("Canada (local)", 1.00),
+                "GB": ("United Kingdom (local)", 1.00),
+                "AU": ("Australia (local)", 6.50),
+                "DE": ("Germany (local)", 1.00),
+                "FR": ("France (local)", 1.00),
+                "IN": ("India (local)", 1.50),
+                "JP": ("Japan (local)", 4.00),
+            }),
+        },
+        {
+            "slug": "vonage-numbers",
+            "name": "Vonage Numbers",
+            "homepage": "https://www.vonage.com/communications-apis/numbers/pricing/",
+            "models": _phone_number_countries({
+                "US": ("United States (local)", 0.99),
+                "CA": ("Canada (local)", 0.99),
+                "GB": ("United Kingdom (local)", 1.50),
+                "DE": ("Germany (local)", 1.50),
+                "AU": ("Australia (local)", 6.00),
+                "IN": ("India (local)", 2.00),
+            }),
+        },
+        {
+            "slug": "cloudonix-numbers",
+            "name": "Cloudonix Numbers",
+            "homepage": "https://cloudonix.com",
+            "models": _phone_number_countries({
+                "US": ("United States (local)", 1.00),
+                "CA": ("Canada (local)", 1.00),
+                "GB": ("United Kingdom (local)", 1.20),
+                "IL": ("Israel (local)", 2.50),
+            }),
+        },
+        {
+            "slug": "telnyx-numbers",
+            "name": "Telnyx Numbers",
+            "homepage": "https://telnyx.com/pricing/numbers",
+            "models": _phone_number_countries({
+                "US": ("United States (local)", 1.00),
+                "CA": ("Canada (local)", 1.00),
+                "GB": ("United Kingdom (local)", 0.40),
+                "AU": ("Australia (local)", 4.00),
+                "DE": ("Germany (local)", 0.80),
+                "IN": ("India (local)", 1.50),
+            }),
+        },
+        {
+            "slug": "plivo-numbers",
+            "name": "Plivo Numbers",
+            "homepage": "https://www.plivo.com/voice-api/pricing/numbers/",
+            "models": _phone_number_countries({
+                "US": ("United States (local)", 0.80),
+                "CA": ("Canada (local)", 0.80),
+                "GB": ("United Kingdom (local)", 1.00),
+                "AU": ("Australia (local)", 5.00),
+                "IN": ("India (local)", 1.50),
             }),
         },
     ],

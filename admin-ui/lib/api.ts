@@ -132,7 +132,13 @@ export type AdminInvitesRes = { total: number; items: AdminInvite[] };
 
 // --- P2.A1 — Cost catalog ------------------------------------------------
 
-export type ProviderKind = "llm" | "tts" | "stt" | "embedding" | "telephony";
+export type ProviderKind =
+  | "llm"
+  | "tts"
+  | "stt"
+  | "embedding"
+  | "telephony"
+  | "phone_number";
 export type PriceUnit =
   | "per_minute"
   | "per_input_token"
@@ -141,7 +147,8 @@ export type PriceUnit =
   | "per_call"
   | "per_request"
   | "per_1k_tokens"
-  | "per_1k_chars";
+  | "per_1k_chars"
+  | "per_month";
 
 export type CostProvider = {
   id: number;
@@ -203,6 +210,22 @@ export type SyncPricesRes = {
 export type CredentialsStatus = { configured: boolean };
 
 export type Country = { code: string; name: string };
+
+export type PriceSyncStatus = {
+  enabled: boolean;
+  interval_seconds: number;
+  running: boolean;
+  last_run_at: string | null;
+  last_providers: number;
+  last_upserted: number;
+  last_skipped: number;
+};
+
+export type PriceSyncRunRes = {
+  providers: number;
+  upserted: number;
+  skipped: number;
+};
 
 export type MarkupRule = {
   id: number;
