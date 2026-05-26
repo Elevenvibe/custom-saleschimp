@@ -18,7 +18,10 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     <>
       <PageHeader title="Settings" />
       <div className="flex flex-1 min-h-0">
-        <aside className="w-52 shrink-0 border-r bg-card/40 p-4">
+        {/* sticky top-14 pins the aside just below the (also sticky) PageHeader.
+            self-start + explicit height stops flex from stretching the box;
+            the inner overflow-y-auto lets a long settings nav scroll on its own. */}
+        <aside className="sticky top-14 z-10 self-start h-[calc(100svh-3.5rem)] w-52 shrink-0 overflow-y-auto border-r bg-card/40 p-4">
           <nav className="space-y-1">
             {SETTINGS_NAV.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || pathname.startsWith(href + "/");
@@ -39,7 +42,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             })}
           </nav>
         </aside>
-        <div className="flex-1 overflow-y-auto">{children}</div>
+        <div className="flex-1 min-w-0">{children}</div>
       </div>
     </>
   );
