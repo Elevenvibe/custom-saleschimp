@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { api, setToken, type Me, GATEWAY } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Sparkles, ExternalLink, Users, Settings } from "lucide-react";
+import { CreditCard, ExternalLink, LogOut, Settings, Sparkles, Users } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -66,6 +66,9 @@ export default function DashboardPage() {
         </Card>
         <Card title="Invite team" body="Add more teammates to your workspace." href="/onboarding">
           <Users className="size-4" />
+        </Card>
+        <Card title="Plans &amp; billing" body="See plans, switch tiers, top up your wallet." href="/billing/plans">
+          <CreditCard className="size-4" />
         </Card>
         <Card title="Workspace settings" body="Change name and other workspace settings." href="/onboarding">
           <Settings className="size-4" />
