@@ -416,6 +416,67 @@ async def get_credentials_status(
     return CredentialsStatusOut(configured=row.credentials_encrypted is not None)
 
 
+class UpsertCredentialsIn(BaseModel):
+    kind: ProviderKind
+    slug: str = Field(min_length=1, max_length=64, pattern="^[a-z0-9-]+$")
+    api_key: str = Field(min_length=1)
+
+
+@router.post("/upsert-credentials", response_model=ProviderOut)
+async def upsert_credentials(
+    body: UpsertCredentialsIn,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProviderOut:
+    """Set a platform-level API key for an integrated provider, creating the
+    cost_provider row on first use.
+
+    Drives the /settings/provider-api-keys page: listing every catalog provider
+    and exposing a single "Set API key" affordance regardless of whether the
+    cost_provider has been instantiated yet. If the catalog has the slug we
+    use its display name; otherwise we fall back to the slug.
+    """
+    row = (
+        await session.execute(select(CostProvider).where(CostProvider.slug == body.slug))
+    ).scalar_one_or_none()
+    created = False
+    if row is None:
+        catalog_hit = find_provider(body.slug)
+        display_name = catalog_hit[1]["name"] if catalog_hit else body.slug
+        row = CostProvider(
+            kind=body.kind,
+            slug=body.slug,
+            name=display_name,
+            currency="USD",
+            active=True,
+            credentials_encrypted=encrypt_dict({"api_key": body.api_key}),
+        )
+        session.add(row)
+        created = True
+    else:
+        # Just rotate the key on an existing provider.
+        row.credentials_encrypted = encrypt_dict({"api_key": body.api_key})
+
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "slug conflict") from None
+
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=_actor_id(claims),
+        action="admin.cost_provider.credentials.upsert",
+        target_kind="cost_provider",
+        target_id=str(row.id),
+        payload={"slug": row.slug, "kind": row.kind, "created": created},
+    )
+    await session.commit()
+    await session.refresh(row)
+    return _provider_out(row)
+
+
 @router.put("/{provider_id}/credentials", response_model=CredentialsStatusOut)
 async def set_credentials(
     provider_id: int,

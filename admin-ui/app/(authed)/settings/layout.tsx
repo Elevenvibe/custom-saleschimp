@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
-import { Clock, Mail } from "lucide-react";
+import { Clock, KeyRound, Mail } from "lucide-react";
 
 const SETTINGS_NAV = [
   { href: "/settings/cronjob", label: "Cronjob", icon: Clock },
+  { href: "/settings/provider-api-keys", label: "Provider API keys", icon: KeyRound },
   { href: "/settings/email-providers", label: "Email providers", icon: Mail },
 ];
 

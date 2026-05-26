@@ -156,6 +156,80 @@ INTEGRATED_PROVIDERS: dict[ProviderKind, list[IntegratedProvider]] = {
                 {"variant": "llama-3.3-70b", "label": "Llama 3.3 70B", "prices": _llm(0.00085, 0.0012)},
             ],
         },
+        {
+            "slug": "openrouter",
+            "name": "OpenRouter",
+            "homepage": "https://openrouter.ai",
+            "models": [
+                {"variant": "openrouter/auto", "label": "Auto-route", "prices": _llm(0.005, 0.015)},
+                {"variant": "anthropic/claude-sonnet-4.5", "label": "Anthropic Claude Sonnet 4.5", "prices": _llm(0.003, 0.015)},
+                {"variant": "google/gemini-2.0-flash", "label": "Google Gemini 2.0 Flash", "prices": _llm(0.00010, 0.00040)},
+            ],
+        },
+        {
+            "slug": "azure-openai",
+            "name": "Azure OpenAI",
+            "homepage": "https://azure.microsoft.com/products/ai-services/openai-service",
+            "models": [
+                {"variant": "gpt-4o", "label": "GPT-4o (Azure)", "prices": _llm(0.0025, 0.010)},
+                {"variant": "gpt-4o-mini", "label": "GPT-4o mini (Azure)", "prices": _llm(0.00015, 0.0006)},
+            ],
+        },
+        {
+            "slug": "dograh-mps",
+            "name": "Dograh MPS",
+            "homepage": "https://dograh.com",
+            "models": [
+                # Dograh routes through their managed proxy; pricing matches the
+                # upstream model. Admins should override per their MPS plan.
+                {"variant": "default", "label": "Default routed model", "prices": _llm(0.001, 0.003)},
+            ],
+        },
+        {
+            "slug": "aws-bedrock",
+            "name": "AWS Bedrock",
+            "homepage": "https://aws.amazon.com/bedrock",
+            "models": [
+                {"variant": "anthropic.claude-3-5-sonnet-20241022-v2:0", "label": "Claude 3.5 Sonnet (Bedrock)", "prices": _llm(0.003, 0.015)},
+                {"variant": "anthropic.claude-3-haiku-20240307-v1:0", "label": "Claude 3 Haiku (Bedrock)", "prices": _llm(0.00025, 0.00125)},
+                {"variant": "meta.llama3-70b-instruct-v1:0", "label": "Llama 3 70B Instruct (Bedrock)", "prices": _llm(0.00265, 0.0035)},
+            ],
+        },
+        {
+            "slug": "speaches",
+            "name": "Speaches (self-hosted)",
+            "homepage": "https://speaches.ai",
+            "models": [
+                # Self-hosted OpenAI-compatible local LLM — no marginal cost
+                # unless admin chooses to bill internal compute.
+                {"variant": "local", "label": "Local model", "prices": _llm(0.0, 0.0)},
+            ],
+        },
+        {
+            "slug": "openai-realtime",
+            "name": "OpenAI Realtime",
+            "homepage": "https://platform.openai.com/docs/guides/realtime",
+            "models": [
+                {"variant": "gpt-4o-realtime-preview", "label": "GPT-4o Realtime", "prices": _llm(0.005, 0.020)},
+                {"variant": "gpt-4o-mini-realtime-preview", "label": "GPT-4o mini Realtime", "prices": _llm(0.0006, 0.0024)},
+            ],
+        },
+        {
+            "slug": "google-realtime",
+            "name": "Google Gemini Realtime",
+            "homepage": "https://ai.google.dev/gemini-api/docs/multimodal-live",
+            "models": [
+                {"variant": "gemini-2.0-flash-exp", "label": "Gemini 2.0 Flash Realtime", "prices": _llm(0.00010, 0.00040)},
+            ],
+        },
+        {
+            "slug": "google-vertex-realtime",
+            "name": "Google Vertex Realtime",
+            "homepage": "https://cloud.google.com/vertex-ai",
+            "models": [
+                {"variant": "gemini-2.0-flash-exp", "label": "Gemini 2.0 Flash Realtime (Vertex)", "prices": _llm(0.00010, 0.00040)},
+            ],
+        },
     ],
     "tts": [
         {
@@ -204,6 +278,47 @@ INTEGRATED_PROVIDERS: dict[ProviderKind, list[IntegratedProvider]] = {
                 {"variant": "neural", "label": "Neural voices", "prices": _per_1k_chars(0.016)},
             ],
         },
+        {
+            "slug": "rime",
+            "name": "Rime",
+            "homepage": "https://rime.ai",
+            "models": [
+                {"variant": "mistv2", "label": "Mist v2", "prices": _per_1k_chars(0.030)},
+                {"variant": "arcana", "label": "Arcana", "prices": _per_1k_chars(0.050)},
+            ],
+        },
+        {
+            "slug": "sarvam-tts",
+            "name": "Sarvam TTS",
+            "homepage": "https://sarvam.ai",
+            "models": [
+                {"variant": "bulbul:v2", "label": "Bulbul v2", "prices": _per_1k_chars(0.018)},
+            ],
+        },
+        {
+            "slug": "speaches-tts",
+            "name": "Speaches TTS (self-hosted)",
+            "homepage": "https://speaches.ai",
+            "models": [
+                {"variant": "local", "label": "Local model", "prices": _per_1k_chars(0.0)},
+            ],
+        },
+        {
+            "slug": "dograh-tts",
+            "name": "Dograh TTS (MPS)",
+            "homepage": "https://dograh.com",
+            "models": [
+                {"variant": "default", "label": "Default routed voice", "prices": _per_1k_chars(0.020)},
+            ],
+        },
+        {
+            "slug": "camb",
+            "name": "Camb.ai",
+            "homepage": "https://camb.ai",
+            "models": [
+                {"variant": "default", "label": "Default voice", "prices": _per_1k_chars(0.040)},
+            ],
+        },
     ],
     "stt": [
         {
@@ -247,6 +362,47 @@ INTEGRATED_PROVIDERS: dict[ProviderKind, list[IntegratedProvider]] = {
             "homepage": "https://azure.microsoft.com/products/ai-services/ai-speech",
             "models": [
                 {"variant": "standard", "label": "Standard", "prices": _per_min(0.0167)},
+            ],
+        },
+        {
+            "slug": "gladia",
+            "name": "Gladia",
+            "homepage": "https://gladia.io",
+            "models": [
+                {"variant": "solaria-1", "label": "Solaria-1", "prices": _per_min(0.0144)},
+            ],
+        },
+        {
+            "slug": "sarvam-stt",
+            "name": "Sarvam STT",
+            "homepage": "https://sarvam.ai",
+            "models": [
+                {"variant": "saarika:v2", "label": "Saarika v2", "prices": _per_min(0.013)},
+            ],
+        },
+        {
+            "slug": "speaches-stt",
+            "name": "Speaches STT (self-hosted)",
+            "homepage": "https://speaches.ai",
+            "models": [
+                {"variant": "local", "label": "Local Whisper", "prices": _per_min(0.0)},
+            ],
+        },
+        {
+            "slug": "speechmatics",
+            "name": "Speechmatics",
+            "homepage": "https://speechmatics.com",
+            "models": [
+                {"variant": "enhanced", "label": "Enhanced", "prices": _per_min(0.0260)},
+                {"variant": "standard", "label": "Standard", "prices": _per_min(0.0180)},
+            ],
+        },
+        {
+            "slug": "dograh-stt",
+            "name": "Dograh STT (MPS)",
+            "homepage": "https://dograh.com",
+            "models": [
+                {"variant": "default", "label": "Default routed STT", "prices": _per_min(0.0050)},
             ],
         },
     ],
@@ -340,6 +496,26 @@ INTEGRATED_PROVIDERS: dict[ProviderKind, list[IntegratedProvider]] = {
                 "GB": ("United Kingdom", 0.0230),
                 "AU": ("Australia", 0.0430),
                 "IN": ("India", 0.0120),
+            }),
+        },
+        {
+            # Asterisk REST Interface — typically self-hosted. Per-minute cost
+            # is your underlying SIP trunk rate; admins set their own.
+            "slug": "ari",
+            "name": "Asterisk (ARI)",
+            "homepage": "https://docs.asterisk.org/Configuration/Interfaces/Asterisk-REST-Interface-ARI/",
+            "models": _telephony_countries({
+                "US": ("United States", 0.0050),
+            }),
+        },
+        {
+            "slug": "vobiz",
+            "name": "Vobiz",
+            "homepage": "https://vobiz.com",
+            "models": _telephony_countries({
+                "US": ("United States", 0.0080),
+                "GB": ("United Kingdom", 0.0200),
+                "IN": ("India", 0.0100),
             }),
         },
     ],
