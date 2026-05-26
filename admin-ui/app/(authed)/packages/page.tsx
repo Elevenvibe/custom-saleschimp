@@ -315,7 +315,9 @@ function PackageSheet({
         side="right"
         className="sm:!max-w-[55rem] flex flex-col gap-0"
       >
-        <SheetHeader>
+        {/* Bump header/body/footer padding well past shadcn's default `p-4` so
+            the 55rem-wide sheet doesn't feel edge-to-edge crowded. */}
+        <SheetHeader className="px-8 pt-6 pb-4">
           <SheetTitle>{mode === "create" ? "New package" : `Edit ${existing?.name}`}</SheetTitle>
           <SheetDescription>
             Pick a billing interval, then configure what tenants on this package can use and how their usage
@@ -323,7 +325,7 @@ function PackageSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-6 pt-2">
+        <div className="flex-1 space-y-5 overflow-y-auto px-8 pb-8 pt-2">
           {/* --- Identity --- */}
           <section className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -554,7 +556,9 @@ function PackageSheet({
           {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
         </div>
 
-        <SheetFooter className="border-t">
+        {/* Default SheetFooter is `flex-col gap-2` which stacks the actions
+            vertically. Override to a single row so Cancel + Save sit side-by-side. */}
+        <SheetFooter className="flex-row justify-end gap-2 border-t px-8 py-4">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button onClick={submit} disabled={busy || !slug || !name}>
             {busy ? "Saving…" : mode === "create" ? "Create" : "Save"}
