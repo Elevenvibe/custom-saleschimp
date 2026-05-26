@@ -25,7 +25,7 @@ from app.email.crypto import decrypt_dict, encrypt_dict
 router = APIRouter(prefix="/cost-providers", tags=["admin:billing"])
 markup_router = APIRouter(prefix="/markup-rules", tags=["admin:billing"])
 
-ProviderKind = Literal["llm", "tts", "stt", "embedding", "telephony"]
+ProviderKind = Literal["llm", "tts", "stt", "embedding", "telephony", "phone_number"]
 PriceUnit = Literal[
     "per_minute",
     "per_input_token",
@@ -35,6 +35,7 @@ PriceUnit = Literal[
     "per_request",
     "per_1k_tokens",
     "per_1k_chars",
+    "per_month",
 ]
 
 
