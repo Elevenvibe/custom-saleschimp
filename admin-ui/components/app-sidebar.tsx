@@ -26,6 +26,7 @@ import {
   Sparkles,
   Coins,
   Settings,
+  Wallet,
 } from "lucide-react";
 
 const nav: NavItem[] = [
@@ -36,6 +37,7 @@ const nav: NavItem[] = [
   { title: "Audit log", url: "/audit", icon: <ScrollText /> },
   { title: "Packages", url: "/packages", icon: <Package /> },
   { title: "Cost catalog", url: "/cost-catalog", icon: <Coins /> },
+  { title: "Billing", url: "/billing", icon: <Wallet /> },
   { title: "Plugins", url: "/plugins", icon: <PlugZap /> },
   { title: "Settings", url: "/settings", icon: <Settings /> },
 ];
