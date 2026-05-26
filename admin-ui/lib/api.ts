@@ -38,8 +38,33 @@ export async function api<T = unknown>(
   }
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(res.status, body, body?.detail || res.statusText);
+  if (!res.ok) throw new ApiError(res.status, body, _formatDetail(body?.detail) || res.statusText);
   return body as T;
+}
+
+/** Normalize FastAPI/Pydantic's `detail` field into a readable message.
+ *  - string → returned as-is
+ *  - array (Pydantic validation errors) → join the `msg` (+ field) of each
+ *  - other shapes → JSON.stringify so we never show "[object Object]"
+ */
+function _formatDetail(detail: unknown): string | null {
+  if (detail == null) return null;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => {
+        if (typeof d === "string") return d;
+        if (d && typeof d === "object") {
+          const loc = Array.isArray(d.loc) ? d.loc.slice(1).join(".") : "";
+          const msg = typeof d.msg === "string" ? d.msg : JSON.stringify(d);
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return String(d);
+      })
+      .join("; ");
+  }
+  if (typeof detail === "object") return JSON.stringify(detail);
+  return String(detail);
 }
 
 // --- Typed surfaces ---
