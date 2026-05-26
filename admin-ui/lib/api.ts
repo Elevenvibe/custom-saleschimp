@@ -280,6 +280,80 @@ export type PriceSyncRunRes = {
   skipped: number;
 };
 
+// --- P2.A3 — wallets / coupons / payments ---------------------------------
+
+export type AdminWallet = {
+  tenant_id: number;
+  balance_micros: number;
+  currency: string;
+  credit_limit_micros: number;
+  auto_reload_enabled: boolean;
+  auto_reload_threshold_micros: number;
+  auto_reload_amount_micros: number;
+  auto_reload_payment_method_id: number | null;
+};
+
+export type LedgerRow = {
+  id: number;
+  delta_micros: number;
+  balance_after_micros: number;
+  currency: string;
+  reason: "charge" | "topup" | "refund" | "adjustment" | "coupon" | "auto_reload";
+  ref_kind: string | null;
+  ref_id: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type AdminCoupon = {
+  id: number;
+  code: string;
+  kind: "percentage" | "fixed_micros";
+  value_micros: number;
+  currency: string;
+  scope_kind: "global" | "package";
+  scope_value: string | null;
+  max_uses: number | null;
+  uses_count: number;
+  expires_at: string | null;
+  active: boolean;
+  notes: string | null;
+  created_at: string;
+};
+
+export type AdminPaymentIntent = {
+  id: number;
+  tenant_id: number;
+  provider: string;
+  provider_ref: string;
+  amount_cents: number;
+  currency: string;
+  status: "pending" | "succeeded" | "failed" | "refunded";
+  created_at: string;
+};
+
+export type AutoReloadStatus = {
+  enabled: boolean;
+  interval_seconds: number;
+  running: boolean;
+  last_run_at: string | null;
+  last_checked: number;
+  last_reloaded: number;
+};
+
+export type AdminProviderInfo = {
+  slug: string;
+  configured: boolean;
+  is_default: boolean;
+};
+
+export const MICROS_PER_UNIT = 1_000_000;
+
+export function microsToUsd(micros: number, digits = 2): string {
+  const sign = micros < 0 ? "-" : "";
+  return `${sign}$${(Math.abs(micros) / MICROS_PER_UNIT).toFixed(digits)}`;
+}
+
 export type MarkupRule = {
   id: number;
   scope_kind: "global" | "kind" | "tenant";

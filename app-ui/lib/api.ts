@@ -154,3 +154,94 @@ export type TenantInvite = {
   accepted_at: string | null;
   created_at: string;
 };
+
+// --- P2.A3 — Wallet / usage / payments ----------------------------------
+
+export type LedgerRow = {
+  id: number;
+  delta_micros: number;
+  balance_after_micros: number;
+  currency: string;
+  reason: "charge" | "topup" | "refund" | "adjustment" | "coupon" | "auto_reload";
+  ref_kind: string | null;
+  ref_id: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type WalletSummary = {
+  tenant_id: number;
+  balance_micros: number;
+  currency: string;
+  auto_reload_enabled: boolean;
+  auto_reload_threshold_micros: number;
+  auto_reload_amount_micros: number;
+  recent_ledger: LedgerRow[];
+};
+
+export type UsageRow = {
+  id: number;
+  external_ref: string;
+  package_id: number | null;
+  kind: string;
+  unit: string;
+  quantity_micros: number;
+  raw_cost_micros: number;
+  markup_micros: number;
+  billed_micros: number;
+  currency: string;
+  cost_breakdown: Record<string, unknown>;
+  occurred_at: string;
+};
+
+export type UsageDailyBucket = {
+  day: string;
+  call_count: number;
+  quantity_micros: number;
+  billed_micros: number;
+};
+
+export type ProviderInfo = {
+  slug: "stripe" | "paystack";
+  configured: boolean;
+  is_default: boolean;
+};
+
+export type PaymentMethod = {
+  id: number;
+  provider: "stripe" | "paystack";
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  is_default: boolean;
+  status: "active" | "revoked";
+  created_at: string;
+};
+
+export type TopUpResult = {
+  intent_id: number;
+  provider: string;
+  provider_ref: string;
+  client_secret: string | null;
+  authorization_url: string | null;
+  amount_cents: number;
+  currency: string;
+};
+
+export type CouponRedeemResult = {
+  coupon_id: number;
+  value_applied_micros: number;
+  new_balance_micros: number;
+};
+
+export const MICROS_PER_UNIT = 1_000_000;
+
+export function microsToUsd(micros: number, digits = 2): string {
+  const sign = micros < 0 ? "-" : "";
+  return `${sign}$${(Math.abs(micros) / MICROS_PER_UNIT).toFixed(digits)}`;
+}
+
+export function centsToUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
