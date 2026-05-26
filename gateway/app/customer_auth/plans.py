@@ -48,6 +48,9 @@ class PlanOut(BaseModel):
     currency: str
     contact_sales: bool
     plugins: list[str]
+    allowed_provider_kinds: list[str]
+    usage_only: bool
+    allowed_countries: list[str]
 
 
 class PlansRes(BaseModel):

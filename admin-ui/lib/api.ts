@@ -109,7 +109,15 @@ export type PlatformUser = {
 };
 
 export type PackageKind = "payg" | "annual";
-export type BillingPeriod = "monthly" | "annual" | "usage";
+export type BillingPeriod =
+  | "monthly"
+  | "annual"
+  | "usage"
+  | "per_sec"
+  | "per_min"
+  | "per_hour"
+  | "per_day"
+  | "per_week";
 
 export type Package = {
   id: number;
@@ -126,6 +134,16 @@ export type Package = {
   contact_sales: boolean;
   visible: boolean;
   plugins: string[];
+  /** Provider kinds tenants on this package can use. Empty = no restriction. */
+  allowed_provider_kinds: ProviderKind[];
+  /** Per-kind override of which markup rule to apply. */
+  markup_rule_ids: Record<string, number>;
+  /** When true, the billing engine factors `markup_rule_ids` into billed cost. */
+  apply_markup: boolean;
+  /** When true, the recurring `monthly_price_cents` is forced to 0 — pure PAYG. */
+  usage_only: boolean;
+  /** ISO 3166-1 alpha-2 codes this pricing applies to. Empty = all countries. */
+  allowed_countries: string[];
   created_at: string;
 };
 
