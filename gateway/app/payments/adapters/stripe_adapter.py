@@ -129,6 +129,27 @@ class StripeAdapter(BillingProvider):
             raw=body,
         )
 
+    async def create_setup_intent(self, *, tenant_id: int) -> dict[str, Any]:
+        """Mint a SetupIntent so the client can collect + save a card
+        without charging it. The customer app passes the returned
+        `client_secret` to Stripe Elements; on confirm Stripe gives
+        them a `payment_method` id which they POST back to
+        /api/tenant/payment-methods for storage.
+        """
+        body = await self._post(
+            "/setup_intents",
+            {
+                "usage": "off_session",
+                "automatic_payment_methods[enabled]": "true",
+                "metadata": {"tenant_id": str(tenant_id), "kind": "wallet_setup"},
+            },
+            idempotency_key=None,
+        )
+        return {
+            "client_secret": body.get("client_secret"),
+            "id": body.get("id"),
+        }
+
     async def register_method(self, *, confirmation_token: str) -> RegisteredMethod:
         """`confirmation_token` is the Stripe payment_method id the client
         SDK confirmed (via SetupIntent or PaymentIntent). We fetch the

@@ -133,6 +133,32 @@ async def topup(
     )
 
 
+class SetupIntentOut(BaseModel):
+    client_secret: str
+    id: str
+
+
+@router.post("/payment-methods/setup-intent", response_model=SetupIntentOut)
+async def create_setup_intent(
+    claims: Annotated[dict, Depends(require_org_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SetupIntentOut:
+    """Stripe-only — mint a SetupIntent so the client can run Elements
+    and confirm a card without charging it. The returned payment_method
+    id then comes back to POST /payment-methods for storage."""
+    tenant_id = await _tenant_id_for(session, claims)
+    try:
+        adapter = get_provider("stripe")
+        if not adapter.is_configured():
+            raise ProviderError("stripe not configured")
+        result = await adapter.create_setup_intent(tenant_id=tenant_id)  # type: ignore[attr-defined]
+    except ProviderError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from None
+    if not result.get("client_secret"):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "stripe did not return a client_secret")
+    return SetupIntentOut(client_secret=result["client_secret"], id=result["id"])
+
+
 @router.get("/payment-methods", response_model=list[PaymentMethodOut])
 async def list_methods(
     claims: Annotated[dict, Depends(require_customer)],
