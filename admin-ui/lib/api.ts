@@ -108,13 +108,23 @@ export type PlatformUser = {
   last_login_at: string | null;
 };
 
+export type PackageKind = "payg" | "annual";
+export type BillingPeriod = "monthly" | "annual" | "usage";
+
 export type Package = {
   id: number;
   slug: string;
   name: string;
   description: string | null;
+  kind: PackageKind;
+  billing_period: BillingPeriod;
   monthly_price_cents: number;
-  limits: Record<string, unknown>;
+  bundled_minutes: number;
+  overage_per_minute_micros: number;
+  concurrency_included: number;
+  currency: string;
+  contact_sales: boolean;
+  visible: boolean;
   plugins: string[];
   created_at: string;
 };

@@ -124,6 +124,27 @@ export type Me = {
   }[];
 };
 
+export type Plan = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  kind: "payg" | "annual";
+  billing_period: "monthly" | "annual" | "usage";
+  monthly_price_cents: number;
+  bundled_minutes: number;
+  overage_per_minute_micros: number;
+  concurrency_included: number;
+  currency: string;
+  contact_sales: boolean;
+  plugins: string[];
+};
+
+export type PlansRes = {
+  current_plan_id: number | null;
+  plans: Plan[];
+};
+
 export type TenantInvite = {
   id: number;
   tenant_id: number;
