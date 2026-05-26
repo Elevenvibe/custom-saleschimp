@@ -48,17 +48,32 @@ class LedgerEntry:
     balance_after_micros: int
 
 
-async def get_or_create_wallet(session: AsyncSession, tenant_id: int) -> Wallet:
-    """Idempotent wallet lookup. New tenants get a USD/0-balance row on
-    first touch — keeps the bootstrap path simple (no separate "open a
-    wallet" call from onboarding)."""
-    wallet = await session.get(Wallet, tenant_id)
+async def get_or_create_wallet(
+    session: AsyncSession, tenant_id: int, currency: str = "USD"
+) -> Wallet:
+    """Idempotent wallet lookup for (tenant, currency). Auto-provisions
+    a 0-balance row on first touch so onboarding doesn't have to know
+    about wallets at all. Default currency is USD — multi-currency
+    callers pass currency explicitly."""
+    currency = currency.upper()
+    wallet = await session.get(Wallet, (tenant_id, currency))
     if wallet is not None:
         return wallet
-    wallet = Wallet(tenant_id=tenant_id, balance_micros=0, currency="USD")
+    wallet = Wallet(tenant_id=tenant_id, balance_micros=0, currency=currency)
     session.add(wallet)
     await session.flush()
     return wallet
+
+
+async def list_wallets(session: AsyncSession, tenant_id: int) -> list[Wallet]:
+    """Every currency the tenant holds. Empty list if onboarding hasn't
+    auto-provisioned anything yet."""
+    rows = (
+        await session.execute(
+            select(Wallet).where(Wallet.tenant_id == tenant_id).order_by(Wallet.currency)
+        )
+    ).scalars().all()
+    return list(rows)
 
 
 async def _post(
@@ -118,6 +133,7 @@ async def charge(
     tenant_id: int,
     micros: int,
     *,
+    currency: str = "USD",
     reason: str = "charge",
     ref_kind: str | None = None,
     ref_id: str | None = None,
@@ -125,12 +141,12 @@ async def charge(
     actor_user_id: int | None = None,
     notes: str | None = None,
 ) -> LedgerEntry:
-    """Debit `micros` from the wallet. `micros` must be positive — pass
-    the magnitude, not the signed value, so callers don't accidentally
-    credit when they meant to charge."""
+    """Debit `micros` from the (tenant, currency) wallet. `micros` must
+    be positive — pass the magnitude, not the signed value, so callers
+    don't accidentally credit when they meant to charge."""
     if micros <= 0:
         raise ValueError("charge micros must be positive")
-    wallet = await get_or_create_wallet(session, tenant_id)
+    wallet = await get_or_create_wallet(session, tenant_id, currency)
     return await _post(
         session,
         wallet,
@@ -149,6 +165,7 @@ async def credit(
     tenant_id: int,
     micros: int,
     *,
+    currency: str = "USD",
     reason: str = "topup",
     ref_kind: str | None = None,
     ref_id: str | None = None,
@@ -156,10 +173,10 @@ async def credit(
     actor_user_id: int | None = None,
     notes: str | None = None,
 ) -> LedgerEntry:
-    """Credit `micros` to the wallet."""
+    """Credit `micros` to the (tenant, currency) wallet."""
     if micros <= 0:
         raise ValueError("credit micros must be positive")
-    wallet = await get_or_create_wallet(session, tenant_id)
+    wallet = await get_or_create_wallet(session, tenant_id, currency)
     return await _post(
         session,
         wallet,
@@ -178,6 +195,7 @@ async def adjust(
     tenant_id: int,
     delta_micros: int,
     *,
+    currency: str = "USD",
     actor_user_id: int | None,
     notes: str,
 ) -> LedgerEntry:
@@ -188,7 +206,7 @@ async def adjust(
     intent is unambiguous."""
     if delta_micros == 0:
         raise ValueError("adjustment delta cannot be zero")
-    wallet = await get_or_create_wallet(session, tenant_id)
+    wallet = await get_or_create_wallet(session, tenant_id, currency)
     return await _post(
         session,
         wallet,
@@ -201,16 +219,20 @@ async def adjust(
 
 
 async def recent_ledger(
-    session: AsyncSession, tenant_id: int, *, limit: int = 50
+    session: AsyncSession,
+    tenant_id: int,
+    *,
+    currency: str | None = None,
+    limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Read-only helper for the customer /wallet view."""
+    """Read-only helper for the customer /wallet view. When `currency`
+    is None the ledger is returned for every currency the tenant holds
+    so the UI can render a single unified history."""
+    q = select(WalletLedger).where(WalletLedger.tenant_id == tenant_id)
+    if currency is not None:
+        q = q.where(WalletLedger.currency == currency.upper())
     rows = (
-        await session.execute(
-            select(WalletLedger)
-            .where(WalletLedger.tenant_id == tenant_id)
-            .order_by(WalletLedger.id.desc())
-            .limit(limit)
-        )
+        await session.execute(q.order_by(WalletLedger.id.desc()).limit(limit))
     ).scalars().all()
     return [
         {

@@ -241,6 +241,7 @@ async def reconcile_event(
             # event's, so a tampered webhook can't move a different
             # number of dollars than the user authorized.
             intent.amount_cents * 10_000,
+            currency=intent.currency,
             reason="topup",
             ref_kind="payment_intent",
             ref_id=str(intent.id),
@@ -268,6 +269,7 @@ async def reconcile_event(
             session,
             intent.tenant_id,
             -refund_cents * 10_000,
+            currency=intent.currency,
             actor_user_id=None,
             notes=f"refund {provider} {intent.provider_ref}",
         )
@@ -330,6 +332,7 @@ async def try_auto_reload(session: AsyncSession, wallet: Wallet) -> str:
                 session,
                 intent.tenant_id,
                 intent.amount_cents * 10_000,
+                currency=intent.currency,
                 reason="auto_reload",
                 ref_kind="payment_intent",
                 ref_id=str(intent.id),

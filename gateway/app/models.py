@@ -11,6 +11,7 @@ from app.email.models import EmailProviderConfig
 from app.packages.models import Package, PackagePlugin
 from app.plugins.models import InstalledPlugin
 from app.tenants.models import Invite, Tenant, TenantMember
+from app.fx.models import FxRate
 from app.payments.config_models import PaymentProviderConfig
 from app.payments.models import PaymentIntent, PaymentMethod
 from app.wallet.models import (
@@ -42,4 +43,5 @@ __all__ = [
     "PaymentMethod",
     "PaymentIntent",
     "PaymentProviderConfig",
+    "FxRate",
 ]
