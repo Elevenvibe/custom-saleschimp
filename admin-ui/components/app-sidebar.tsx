@@ -22,10 +22,10 @@ import {
   ScrollText,
   Package,
   PlugZap,
-  Mail,
   Send,
   Sparkles,
   Coins,
+  Settings,
 } from "lucide-react";
 
 const nav: NavItem[] = [
@@ -37,7 +37,7 @@ const nav: NavItem[] = [
   { title: "Packages", url: "/packages", icon: <Package /> },
   { title: "Cost catalog", url: "/cost-catalog", icon: <Coins /> },
   { title: "Plugins", url: "/plugins", icon: <PlugZap /> },
-  { title: "Email providers", url: "/email-providers", icon: <Mail /> },
+  { title: "Settings", url: "/settings", icon: <Settings /> },
 ];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {

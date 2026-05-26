@@ -15,6 +15,8 @@ Pure asyncio — no external scheduler dep. Cancellable on shutdown.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from sqlalchemy import select
@@ -29,6 +31,25 @@ from app.db import SessionLocal
 log = structlog.get_logger()
 
 _task: asyncio.Task | None = None
+_last_run: dict[str, Any] = {
+    "at": None,
+    "providers": 0,
+    "upserted": 0,
+    "skipped": 0,
+}
+
+
+def get_status() -> dict[str, Any]:
+    """Snapshot of the loop's state — used by /api/admin/price-sync/status."""
+    return {
+        "enabled": settings.price_sync_enabled,
+        "interval_seconds": settings.price_sync_interval_seconds,
+        "running": _task is not None and not _task.done(),
+        "last_run_at": _last_run["at"].isoformat() if _last_run["at"] else None,
+        "last_providers": _last_run["providers"],
+        "last_upserted": _last_run["upserted"],
+        "last_skipped": _last_run["skipped"],
+    }
 
 
 async def start_price_sync_loop() -> None:
@@ -88,6 +109,10 @@ async def run_once() -> dict[str, int]:
                 },
             )
         await session.commit()
+    _last_run["at"] = datetime.now(UTC)
+    _last_run["providers"] = provider_count
+    _last_run["upserted"] = upserted_total
+    _last_run["skipped"] = skipped_total
     log.info(
         "price_sync.iteration_done",
         providers=provider_count,

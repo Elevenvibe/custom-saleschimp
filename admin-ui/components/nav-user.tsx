@@ -18,7 +18,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ChevronsUpDown, LogOut, ShieldCheck } from "lucide-react";
+import { ChevronsUpDown, LogOut, Settings, ShieldCheck } from "lucide-react";
 import { getToken, setToken } from "@/lib/api";
 
 type Claims = { sub: string; email: string; role: string; exp: number };
@@ -91,6 +91,10 @@ export function NavUser() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <Settings />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuItem disabled>
               <ShieldCheck />
               Session expires {new Date(claims.exp * 1000).toLocaleString()}
