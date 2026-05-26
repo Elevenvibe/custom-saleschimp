@@ -56,6 +56,19 @@ class Package(Base):
     contact_sales: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
+    # Provider gating + scoping. Empty list = no restriction on that axis.
+    allowed_provider_kinds: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    markup_rule_ids: Mapped[dict[str, int]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    apply_markup: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    usage_only: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    allowed_countries: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
