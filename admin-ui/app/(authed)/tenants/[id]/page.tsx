@@ -27,7 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Send, Trash2, Wallet } from "lucide-react";
 
 type TenantDetail = {
   tenant: Tenant;
@@ -102,6 +103,11 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
         title={t.name}
         action={
           <div className="flex gap-2">
+            <Link href={`/tenants/${t.id}/wallet`}>
+              <Button variant="outline" size="sm">
+                <Wallet className="size-4" /> Wallet
+              </Button>
+            </Link>
             {t.status !== "active" && (
               <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus("active")}>
                 Activate
