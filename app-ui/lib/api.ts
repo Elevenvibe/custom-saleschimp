@@ -205,6 +205,10 @@ export type ProviderInfo = {
   slug: "stripe" | "paystack";
   configured: boolean;
   is_default: boolean;
+  /** Publishable / public key, shipped to the browser for Stripe
+   *  Elements / Paystack inline. Empty when the provider isn't
+   *  configured or doesn't use a public key. */
+  publishable_key: string;
 };
 
 export type PaymentMethod = {

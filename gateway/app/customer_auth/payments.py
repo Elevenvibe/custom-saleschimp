@@ -36,6 +36,9 @@ class ProviderInfo(BaseModel):
     slug: str
     configured: bool
     is_default: bool
+    # Public — required by Stripe Elements / Paystack inline. Empty
+    # string when the provider isn't configured (or doesn't use one).
+    publishable_key: str = ""
 
 
 class TopUpIn(BaseModel):

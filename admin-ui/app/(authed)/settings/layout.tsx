@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
-import { Clock, KeyRound, Mail } from "lucide-react";
+import { Clock, CreditCard, KeyRound, Mail } from "lucide-react";
 
 const SETTINGS_NAV = [
   { href: "/settings/cronjob", label: "Cronjob", icon: Clock },
   { href: "/settings/provider-api-keys", label: "Provider API keys", icon: KeyRound },
   { href: "/settings/email-providers", label: "Email providers", icon: Mail },
+  { href: "/settings/payment-gateways", label: "Payment gateways", icon: CreditCard },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

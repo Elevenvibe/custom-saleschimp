@@ -60,7 +60,7 @@ class TopUpResult:
 
 async def list_providers() -> list[dict[str, Any]]:
     """Cheap delegate so routes don't import the adapter registry directly."""
-    return adapter_list_configured()
+    return await adapter_list_configured()
 
 
 async def open_topup(
