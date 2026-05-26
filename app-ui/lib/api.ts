@@ -169,6 +169,17 @@ export type LedgerRow = {
   created_at: string;
 };
 
+// One row per currency the tenant holds. Returned by /api/tenant/wallets
+// (plural). Use this for the multi-currency balance cards on /billing;
+// WalletSummary stays the canonical shape for the single-currency
+// detail view (with ledger).
+export type WalletRow = {
+  currency: string;
+  balance_micros: number;
+  credit_limit_micros: number;
+  auto_reload_enabled: boolean;
+};
+
 export type WalletSummary = {
   tenant_id: number;
   balance_micros: number;

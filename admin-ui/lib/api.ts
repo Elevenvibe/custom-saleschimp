@@ -282,6 +282,28 @@ export type PriceSyncRunRes = {
 
 // --- P2.A3 — wallets / coupons / payments ---------------------------------
 
+// --- P2.B Plugin marketplace --------------------------------------------
+
+export type PluginPricingKind = "free" | "one_time" | "monthly" | "per_call";
+
+export type MarketplacePlugin = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  vendor: string | null;
+  icon_url: string | null;
+  homepage_url: string | null;
+  pricing_kind: PluginPricingKind;
+  price_micros: number;
+  currency: string;
+  hooks: string[];
+  required_scopes: string[];
+  visible: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AdminWallet = {
   tenant_id: number;
   balance_micros: number;

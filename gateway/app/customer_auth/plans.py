@@ -63,6 +63,12 @@ class SelectPlanIn(BaseModel):
 
 
 def _serialize(pkg: Package, plugins: list[str]) -> PlanOut:
+    # P2.A2c added three columns on packages (allowed_provider_kinds,
+    # usage_only, allowed_countries) and PlanOut surfaces them — but
+    # this helper wasn't updated to populate them, which turned every
+    # /api/tenant/plans call into a 500 once any package row carried
+    # the new defaults. Forward them explicitly here so the customer
+    # Plans page (and downstream UI checks) see the full shape.
     return PlanOut(
         id=pkg.id,
         slug=pkg.slug,
@@ -77,6 +83,9 @@ def _serialize(pkg: Package, plugins: list[str]) -> PlanOut:
         currency=pkg.currency,
         contact_sales=pkg.contact_sales,
         plugins=plugins,
+        allowed_provider_kinds=list(pkg.allowed_provider_kinds or []),
+        usage_only=bool(pkg.usage_only),
+        allowed_countries=list(pkg.allowed_countries or []),
     )
 
 

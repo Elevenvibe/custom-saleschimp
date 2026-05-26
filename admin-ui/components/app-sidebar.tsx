@@ -27,6 +27,7 @@ import {
   Coins,
   Settings,
   Wallet,
+  Boxes,
 } from "lucide-react";
 
 const nav: NavItem[] = [
@@ -38,7 +39,8 @@ const nav: NavItem[] = [
   { title: "Packages", url: "/packages", icon: <Package /> },
   { title: "Cost catalog", url: "/cost-catalog", icon: <Coins /> },
   { title: "Billing", url: "/billing", icon: <Wallet /> },
-  { title: "Plugins", url: "/plugins", icon: <PlugZap /> },
+  { title: "Marketplace", url: "/marketplace", icon: <Boxes /> },
+  { title: "Plugins (runtime)", url: "/plugins", icon: <PlugZap /> },
   { title: "Settings", url: "/settings", icon: <Settings /> },
 ];
 

@@ -14,6 +14,8 @@ from app.tenants.models import Invite, Tenant, TenantMember
 from app.fx.models import FxRate
 from app.payments.config_models import PaymentProviderConfig
 from app.payments.models import PaymentIntent, PaymentMethod
+from app.marketplace.models import PluginCatalogEntry, TenantPluginInstall
+from app.sso.models import SsoState, TenantSsoConfig
 from app.wallet.models import (
     Coupon,
     CouponRedemption,
@@ -44,4 +46,8 @@ __all__ = [
     "PaymentIntent",
     "PaymentProviderConfig",
     "FxRate",
+    "TenantSsoConfig",
+    "SsoState",
+    "PluginCatalogEntry",
+    "TenantPluginInstall",
 ]

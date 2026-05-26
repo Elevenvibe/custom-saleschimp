@@ -33,6 +33,7 @@ import {
   type TopUpResult,
   type UsageDailyBucket,
   type UsageRow,
+  type WalletRow,
   type WalletSummary,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,11 @@ const MICROS_PER_UNIT = 1_000_000;
 
 export default function BillingPage() {
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
+  // Multi-currency list. The single `wallet` above is still the primary
+  // (USD by default) — see the WalletCards section below for how we pick
+  // which one drives the top-up / auto-reload buttons.
+  const [wallets, setWallets] = useState<WalletRow[] | null>(null);
+  const [topUpCurrency, setTopUpCurrency] = useState<string>("USD");
   const [providers, setProviders] = useState<ProviderInfo[] | null>(null);
   const [methods, setMethods] = useState<PaymentMethod[] | null>(null);
   const [daily, setDaily] = useState<UsageDailyBucket[] | null>(null);
@@ -81,6 +87,7 @@ export default function BillingPage() {
 
   function loadAll() {
     api<WalletSummary>("/api/tenant/wallet").then(setWallet).catch((e) => setError(e.message));
+    api<WalletRow[]>("/api/tenant/wallets").then(setWallets).catch(() => setWallets([]));
     api<ProviderInfo[]>("/api/tenant/wallet/providers").then(setProviders).catch(() => setProviders([]));
     api<PaymentMethod[]>("/api/tenant/payment-methods").then(setMethods).catch(() => setMethods([]));
     api<UsageDailyBucket[]>("/api/tenant/usage/daily?days=30").then(setDaily).catch(() => setDaily([]));
@@ -119,34 +126,46 @@ export default function BillingPage() {
         </Link>
       </div>
 
-      {/* --- Balance + actions --- */}
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="md:col-span-2 rounded-lg border bg-card p-6">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">Current balance</div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <div className="font-heading text-4xl font-medium">
-              {microsToUsd(wallet.balance_micros)}
+      {/* --- Balances + actions ---
+          Multi-currency view: one card per (tenant, currency) wallet
+          from /api/tenant/wallets. The primary card (USD by default —
+          /api/tenant/wallet without ?currency=) owns the action
+          buttons; non-primary cards get a Top-up Now shortcut that
+          pre-fills the dialog with that currency. */}
+      <section className="space-y-4">
+        <WalletCards
+          primary={wallet}
+          wallets={wallets}
+          onTopUp={(currency) => {
+            setTopUpCurrency(currency);
+            setShowTopUp(true);
+          }}
+          onAutoReload={() => setShowAutoReload(true)}
+          onAddMethod={() => setShowAddMethod(true)}
+          anyProviderConfigured={anyProviderConfigured}
+        />
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="md:col-span-2 rounded-lg border bg-muted/30 p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Quick actions</div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => { setTopUpCurrency(wallet.currency); setShowTopUp(true); }} disabled={!anyProviderConfigured}>
+                Top up {wallet.currency}
+              </Button>
+              <Button variant="outline" onClick={() => setShowAutoReload(true)}>
+                {wallet.auto_reload_enabled ? "Auto-reload: ON" : "Set up auto-reload"}
+              </Button>
+              <Button variant="outline" onClick={() => setShowAddMethod(true)} disabled={!anyProviderConfigured}>
+                <CreditCard className="size-4" /> Add payment method
+              </Button>
             </div>
-            <div className="text-sm text-muted-foreground">{wallet.currency}</div>
+            {!anyProviderConfigured && (
+              <div className="mt-3 text-xs text-muted-foreground">
+                No payment providers are configured on this deployment yet. Reach out to your admin to enable Stripe or Paystack.
+              </div>
+            )}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={() => setShowTopUp(true)} disabled={!anyProviderConfigured}>
-              Top up
-            </Button>
-            <Button variant="outline" onClick={() => setShowAutoReload(true)}>
-              {wallet.auto_reload_enabled ? "Auto-reload: ON" : "Set up auto-reload"}
-            </Button>
-            <Button variant="outline" onClick={() => setShowAddMethod(true)} disabled={!anyProviderConfigured}>
-              <CreditCard className="size-4" /> Add payment method
-            </Button>
-          </div>
-          {!anyProviderConfigured && (
-            <div className="mt-3 text-xs text-muted-foreground">
-              No payment providers are configured on this deployment yet. Reach out to your admin to enable Stripe or Paystack.
-            </div>
-          )}
+          <CouponCard onRedeemed={loadAll} />
         </div>
-        <CouponCard onRedeemed={loadAll} />
       </section>
 
       {/* --- 30-day usage chart --- */}
@@ -316,6 +335,7 @@ export default function BillingPage() {
         <TopUpDialog
           providers={providers ?? []}
           defaultProvider={defaultProvider}
+          defaultCurrency={topUpCurrency || wallet.currency}
           onClose={() => setShowTopUp(false)}
           onDone={() => { setShowTopUp(false); loadAll(); }}
         />
@@ -462,16 +482,19 @@ function downloadLedgerCsv(rows: LedgerRow[]) {
 function TopUpDialog({
   providers,
   defaultProvider,
+  defaultCurrency,
   onClose,
   onDone,
 }: {
   providers: ProviderInfo[];
   defaultProvider: string;
+  defaultCurrency: string;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [amount, setAmount] = useState("20.00");
   const [provider, setProvider] = useState(defaultProvider);
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TopUpResult | null>(null);
@@ -492,7 +515,7 @@ function TopUpDialog({
         method: "POST",
         body: JSON.stringify({
           amount_cents: Math.round(usd * 100),
-          currency: "USD",
+          currency,
           provider,
           idempotency_key: makeRef("topup"),
         }),
@@ -516,15 +539,26 @@ function TopUpDialog({
         </DialogHeader>
         {!result && (
           <div className="space-y-3">
-            <div>
-              <Label>Amount (USD)</Label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="20.00"
-              />
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <Label>Amount ({currency})</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="20.00"
+                />
+              </div>
+              <div>
+                <Label>Currency</Label>
+                <Input
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                  maxLength={8}
+                  placeholder="USD"
+                />
+              </div>
             </div>
             <div>
               <Label>Provider</Label>
@@ -871,5 +905,85 @@ function AddMethodDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+/** Per-currency balance cards.
+ *
+ *  The first card is the "primary" wallet (USD by default). It mirrors
+ *  the shape we used pre-f5: large balance + currency label. Additional
+ *  rows in `wallets` get rendered as smaller cards beside it; each has
+ *  a quick Top up shortcut that pre-selects its currency.
+ *
+ *  If /api/tenant/wallets has more wallets than the primary one, we
+ *  filter out the primary by currency match to avoid duplicating it
+ *  in the row.
+ */
+function WalletCards({
+  primary,
+  wallets,
+  onTopUp,
+  onAutoReload: _onAutoReload,
+  onAddMethod: _onAddMethod,
+  anyProviderConfigured,
+}: {
+  primary: WalletSummary;
+  wallets: WalletRow[] | null;
+  onTopUp: (currency: string) => void;
+  onAutoReload: () => void;
+  onAddMethod: () => void;
+  anyProviderConfigured: boolean;
+}) {
+  const extras = (wallets ?? []).filter((w) => w.currency !== primary.currency);
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <div className="md:col-span-1 rounded-lg border bg-card p-6">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">Primary balance</div>
+        <div className="mt-2 flex items-baseline gap-2">
+          <div className="font-heading text-4xl font-medium">
+            {microsToUsd(primary.balance_micros)}
+          </div>
+          <div className="text-sm text-muted-foreground">{primary.currency}</div>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          onClick={() => onTopUp(primary.currency)}
+          disabled={!anyProviderConfigured}
+        >
+          Top up {primary.currency}
+        </Button>
+      </div>
+      {extras.map((w) => (
+        <div key={w.currency} className="rounded-lg border bg-card p-6">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">{w.currency} balance</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <div className="font-heading text-3xl font-medium">
+              {microsToUsd(w.balance_micros)}
+            </div>
+            <div className="text-sm text-muted-foreground">{w.currency}</div>
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {w.auto_reload_enabled ? "Auto-reload on" : "No auto-reload"}
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-3"
+            onClick={() => onTopUp(w.currency)}
+            disabled={!anyProviderConfigured}
+          >
+            Top up {w.currency}
+          </Button>
+        </div>
+      ))}
+      {extras.length === 0 && (
+        <div className="md:col-span-2 rounded-lg border border-dashed bg-muted/20 p-6 flex items-center text-xs text-muted-foreground">
+          You only hold {primary.currency}. Open a wallet in another currency by topping up with that currency selected.
+        </div>
+      )}
+    </div>
   );
 }

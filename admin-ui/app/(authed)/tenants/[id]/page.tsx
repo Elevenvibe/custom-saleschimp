@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
-import { Send, Trash2, Wallet } from "lucide-react";
+import { KeyRound, Send, Trash2, Wallet } from "lucide-react";
 
 type TenantDetail = {
   tenant: Tenant;
@@ -106,6 +106,11 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
             <Link href={`/tenants/${t.id}/wallet`}>
               <Button variant="outline" size="sm">
                 <Wallet className="size-4" /> Wallet
+              </Button>
+            </Link>
+            <Link href={`/tenants/${t.id}/sso`}>
+              <Button variant="outline" size="sm">
+                <KeyRound className="size-4" /> SSO
               </Button>
             </Link>
             {t.status !== "active" && (

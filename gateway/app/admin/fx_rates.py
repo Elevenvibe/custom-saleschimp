@@ -16,8 +16,45 @@ from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
 from app.db import get_session
 from app.fx import service as fx_service
+from app.fx.cron import get_status as fx_fetcher_status, run_once as fx_fetcher_run_once
 
 router = APIRouter(prefix="/fx-rates", tags=["admin:fx"])
+
+
+class FxFetcherStatus(BaseModel):
+    enabled: bool
+    interval_seconds: int
+    url: str
+    base_currency: str
+    running: bool
+    last_run_at: str | None
+    last_fetched: int
+    last_upserted: int
+    last_skipped_manual: int
+    last_error: str | None
+
+
+class FxFetcherRunRes(BaseModel):
+    fetched: int
+    upserted: int
+    skipped_manual: int
+    error: str | None = None
+
+
+@router.get("/fetcher/status", response_model=FxFetcherStatus)
+async def fetcher_status(
+    _claims: Annotated[dict, Depends(require_super_admin)],
+) -> FxFetcherStatus:
+    return FxFetcherStatus(**fx_fetcher_status())
+
+
+@router.post("/fetcher/run", response_model=FxFetcherRunRes)
+async def fetcher_run(
+    _claims: Annotated[dict, Depends(require_super_admin)],
+) -> FxFetcherRunRes:
+    """Trigger one immediate fetch + upsert pass. Useful when wiring
+    the cron up the first time, or after rotating the upstream URL."""
+    return FxFetcherRunRes(**(await fx_fetcher_run_once()))
 
 
 class FxRateIn(BaseModel):

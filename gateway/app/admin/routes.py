@@ -12,6 +12,8 @@ from app.admin.price_sync import router as price_sync_router
 from app.admin.fx_rates import router as fx_rates_router
 from app.admin.payment_providers import router as payment_providers_router
 from app.admin.payments import router as admin_payments_router
+from app.admin.marketplace import router as admin_marketplace_router
+from app.admin.sso import router as admin_sso_router
 from app.admin.tenants import router as tenants_router
 from app.admin.wallet import router as wallet_router
 
@@ -31,3 +33,5 @@ router.include_router(wallet_router)
 router.include_router(admin_payments_router)
 router.include_router(payment_providers_router)
 router.include_router(fx_rates_router)
+router.include_router(admin_sso_router)
+router.include_router(admin_marketplace_router)

@@ -83,6 +83,21 @@ class Settings(BaseSettings):
     auto_reload_enabled: bool = False
     auto_reload_interval_seconds: int = 60
 
+    # FX rate fetcher — pulls live rates into the fx_rates table from a
+    # free public source on a schedule. Manual admin entries (source=
+    # 'manual') always win over live (source='live'): the cron writes
+    # 'live' rows and skips any pair where a 'manual' row exists.
+    fx_fetcher_enabled: bool = False
+    # exchangerate.host is the default — no API key required, USD base.
+    # Override to https://open.er-api.com/v6/latest/USD or similar if
+    # exchangerate.host goes down.
+    fx_fetcher_url: str = "https://open.er-api.com/v6/latest/USD"
+    fx_fetcher_base_currency: str = "USD"
+    fx_fetcher_interval_seconds: int = 3600  # hourly is plenty
+    # Restrict the set of pairs we persist. Empty list = persist every
+    # currency the API returns; non-empty = only persist these.
+    fx_fetcher_currencies: str = "NGN,EUR,GBP,KES,GHS,ZAR,INR"
+
     # CORS allowlist for browser apps that call the gateway from a different
     # origin (admin UI + customer app). Comma-separated.
     cors_origins: str = (
