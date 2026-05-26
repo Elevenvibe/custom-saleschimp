@@ -11,6 +11,7 @@ from app.email.models import EmailProviderConfig
 from app.packages.models import Package, PackagePlugin
 from app.plugins.models import InstalledPlugin
 from app.tenants.models import Invite, Tenant, TenantMember
+from app.payments.models import PaymentIntent, PaymentMethod
 from app.wallet.models import (
     Coupon,
     CouponRedemption,
@@ -37,4 +38,6 @@ __all__ = [
     "UsageRecord",
     "Coupon",
     "CouponRedemption",
+    "PaymentMethod",
+    "PaymentIntent",
 ]

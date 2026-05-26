@@ -67,6 +67,22 @@ class Settings(BaseSettings):
     usage_ingest_interval_seconds: int = 120
     usage_ingest_page_size: int = 100
 
+    # Payment provider secrets. Stripe is the default; both adapters
+    # short-circuit to a clear "not configured" error when their key
+    # is unset, so a deploy with only Stripe wired in still works for
+    # the customer who only configures Stripe.
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+    paystack_secret_key: str = ""
+    paystack_public_key: str = ""
+
+    # Auto-reload sweep — checks every tenant whose auto_reload_enabled
+    # is true and whose balance has dropped below the configured
+    # threshold, then attempts a charge against the stored payment method.
+    auto_reload_enabled: bool = False
+    auto_reload_interval_seconds: int = 60
+
     # CORS allowlist for browser apps that call the gateway from a different
     # origin (admin UI + customer app). Comma-separated.
     cors_origins: str = (

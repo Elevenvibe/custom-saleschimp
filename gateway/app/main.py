@@ -31,7 +31,10 @@ from app.customer_auth.login import router as customer_login_router
 from app.customer_auth.me import router as customer_me_router
 from app.customer_auth.plans import router as customer_plans_router
 from app.customer_auth.routes import router as customer_auth_router
+from app.customer_auth.payments import router as customer_payments_router
 from app.customer_auth.wallet import router as customer_wallet_router
+from app.payments.cron import start_auto_reload_loop, stop_auto_reload_loop
+from app.payments.webhooks import router as payments_webhook_router
 from app.wallet.ingest import start_usage_ingest_loop, stop_usage_ingest_loop
 from app.pages.routes import router as pages_router
 from app.proxy.routes import router as proxy_router
@@ -47,7 +50,9 @@ async def lifespan(_: FastAPI):
     await bootstrap_demo_tenant_if_needed()
     await start_price_sync_loop()
     await start_usage_ingest_loop()
+    await start_auto_reload_loop()
     yield
+    await stop_auto_reload_loop()
     await stop_usage_ingest_loop()
     await stop_price_sync_loop()
     log.info("gateway.stop")
@@ -83,6 +88,8 @@ app.include_router(invites_tenant_router, prefix="/api/tenant")
 app.include_router(customer_me_router, prefix="/api/tenant")
 app.include_router(customer_plans_router, prefix="/api/tenant")
 app.include_router(customer_wallet_router, prefix="/api/tenant")
+app.include_router(customer_payments_router, prefix="/api/tenant")
+app.include_router(payments_webhook_router, prefix="/api")
 app.include_router(admin_router, prefix="/api/admin")
 app.include_router(pages_router)
 
