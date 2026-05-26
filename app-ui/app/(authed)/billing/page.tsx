@@ -56,6 +56,14 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, CreditCard, Download, Loader2, Sparkles, Trash2 } from "lucide-react";
 
+import { StripeElementsHost } from "@/components/billing/StripeElementsHost";
+import { PaystackInline } from "@/components/billing/PaystackInline";
+
+// Bumped one digit per redeploy of stale cached cents → micros.
+function makeRef(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 const MICROS_PER_UNIT = 1_000_000;
 
 export default function BillingPage() {
@@ -472,8 +480,9 @@ function TopUpDialog({
     () => providers.filter((p) => p.configured),
     [providers],
   );
+  const providerInfo = configured.find((p) => p.slug === provider);
 
-  async function submit() {
+  async function startTopUp() {
     setBusy(true);
     setError(null);
     try {
@@ -485,6 +494,7 @@ function TopUpDialog({
           amount_cents: Math.round(usd * 100),
           currency: "USD",
           provider,
+          idempotency_key: makeRef("topup"),
         }),
       });
       setResult(r);
@@ -501,7 +511,7 @@ function TopUpDialog({
         <DialogHeader>
           <DialogTitle>Top up wallet</DialogTitle>
           <DialogDescription>
-            Funds land in your wallet as soon as the payment provider confirms.
+            Funds land in your wallet as soon as the payment provider confirms via webhook.
           </DialogDescription>
         </DialogHeader>
         {!result && (
@@ -531,28 +541,44 @@ function TopUpDialog({
             </div>
           </div>
         )}
-        {result && (
-          <div className="space-y-2 text-sm">
-            <div className="rounded-md bg-muted px-3 py-2">
-              Intent <span className="font-mono">{result.provider_ref}</span> opened for {centsToUsd(result.amount_cents)}.
+        {result && result.provider === "stripe" && result.client_secret && providerInfo?.publishable_key && (
+          <StripeElementsHost
+            publishableKey={providerInfo.publishable_key}
+            clientSecret={result.client_secret}
+            mode="payment"
+            submitLabel={`Pay ${centsToUsd(result.amount_cents)}`}
+            busyLabel="Confirming…"
+            onCancel={onClose}
+            onSuccess={() => onDone()}
+          />
+        )}
+        {result && result.provider === "paystack" && providerInfo?.publishable_key && (
+          <div className="space-y-2">
+            <div className="rounded-md bg-muted px-3 py-2 text-sm">
+              Click below to pay {centsToUsd(result.amount_cents)} via Paystack. The wallet credits once the webhook confirms.
             </div>
-            {result.client_secret && (
-              <div className="text-xs text-muted-foreground">
-                Stripe client_secret returned. In a finished UI this is where Stripe Elements confirms the card.
-              </div>
-            )}
-            {result.authorization_url && (
-              <a href={result.authorization_url} target="_blank" rel="noopener noreferrer"
-                 className="block rounded-md bg-primary px-3 py-2 text-center text-sm text-primary-foreground hover:bg-primary/90">
-                Continue to Paystack →
-              </a>
-            )}
+            <PaystackInline
+              publicKey={providerInfo.publishable_key}
+              amountCents={result.amount_cents}
+              currency={result.currency}
+              email={`tenant-${result.intent_id}@topup.invalid`}
+              reference={result.provider_ref}
+              onSuccess={() => onDone()}
+              onCancel={onClose}
+              label={`Pay ${centsToUsd(result.amount_cents)} with Paystack`}
+            />
           </div>
+        )}
+        {result && result.provider === "paystack" && result.authorization_url && !providerInfo?.publishable_key && (
+          <a href={result.authorization_url} target="_blank" rel="noopener noreferrer"
+             className="block rounded-md bg-primary px-3 py-2 text-center text-sm text-primary-foreground hover:bg-primary/90">
+            Continue to Paystack →
+          </a>
         )}
         {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
         <DialogFooter>
-          {!result && <Button onClick={submit} disabled={busy}>{busy ? "Starting…" : "Start top-up"}</Button>}
-          <Button variant="ghost" onClick={result ? onDone : onClose}>{result ? "Done" : "Cancel"}</Button>
+          {!result && <Button onClick={startTopUp} disabled={busy}>{busy ? "Starting…" : "Continue"}</Button>}
+          {!result && <Button variant="ghost" onClick={onClose}>Cancel</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -681,14 +707,54 @@ function AddMethodDialog({
   onAdded: () => void;
 }) {
   const [provider, setProvider] = useState(defaultProvider);
-  const [token, setToken] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // For Stripe we mint a SetupIntent on open. clientSecret stays null
+  // until the gateway responds; the Elements component renders only
+  // when we have both publishable + secret.
+  const [setupSecret, setSetupSecret] = useState<string | null>(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  // Paystack "save card" flow runs a charge of 1 currency-unit and
+  // promotes the resulting authorization. The reference is the
+  // confirmation_token we pass to /payment-methods after Paystack
+  // fires its inline success callback.
+  const [paystackRef, setPaystackRef] = useState<string | null>(null);
 
   const configured = providers.filter((p) => p.configured);
+  const providerInfo = configured.find((p) => p.slug === provider);
 
-  async function submit() {
-    setBusy(true);
+  // Kick off the per-provider flow as soon as the dialog opens with a
+  // configured provider. Subsequent toggles run via ensureFlow() in the
+  // <SelectTrigger onClick>.
+  useEffect(() => {
+    if (provider === "stripe" && providerInfo?.publishable_key && setupSecret === null && !setupBusy) {
+      void startStripeSetup();
+    } else if (provider === "paystack" && providerInfo?.publishable_key && paystackRef === null) {
+      setPaystackRef(makeRef("paystack-setup"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, providerInfo?.publishable_key]);
+
+  // Mint a Stripe SetupIntent the moment the dialog switches to stripe.
+  // Cancel the previous secret so a provider toggle doesn't re-use a
+  // stale SetupIntent.
+  async function startStripeSetup() {
+    setError(null);
+    setSetupSecret(null);
+    setSetupBusy(true);
+    try {
+      const r = await api<{ client_secret: string; id: string }>(
+        "/api/tenant/payment-methods/setup-intent",
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      setSetupSecret(r.client_secret);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
+  async function registerToken(token: string) {
     setError(null);
     try {
       await api("/api/tenant/payment-methods", {
@@ -702,8 +768,15 @@ function AddMethodDialog({
       onAdded();
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setBusy(false);
+    }
+  }
+
+  function ensureFlow() {
+    if (provider === "stripe" && setupSecret === null && !setupBusy) {
+      void startStripeSetup();
+    }
+    if (provider === "paystack" && paystackRef === null) {
+      setPaystackRef(makeRef("paystack-setup"));
     }
   }
 
@@ -713,16 +786,22 @@ function AddMethodDialog({
         <DialogHeader>
           <DialogTitle>Add a payment method</DialogTitle>
           <DialogDescription>
-            For Stripe, paste the <code>payment_method</code> id returned by your Setup Intent flow.
-            For Paystack, paste the transaction <code>reference</code> from a successful charge.
-            (A finished UI will wire Stripe Elements / Paystack inline directly here.)
+            We never see your card. Stripe / Paystack collect it directly in their iframe / popup
+            and hand us back a token we can store for future charges.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
             <Label>Provider</Label>
-            <Select value={provider} onValueChange={setProvider}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Select
+              value={provider}
+              onValueChange={(v) => {
+                setProvider(v);
+                setSetupSecret(null);
+                setPaystackRef(null);
+              }}
+            >
+              <SelectTrigger onClick={ensureFlow}><SelectValue /></SelectTrigger>
               <SelectContent>
                 {configured.map((p) => (
                   <SelectItem key={p.slug} value={p.slug}>
@@ -732,19 +811,63 @@ function AddMethodDialog({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Confirmation token</Label>
-            <Input
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="pm_... or paystack reference"
-            />
-          </div>
+
+          {provider === "stripe" && providerInfo?.publishable_key && (
+            <div>
+              {setupBusy && (
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" /> Setting up secure card form…
+                </div>
+              )}
+              {setupSecret && (
+                <StripeElementsHost
+                  publishableKey={providerInfo.publishable_key}
+                  clientSecret={setupSecret}
+                  mode="setup"
+                  submitLabel="Save card"
+                  busyLabel="Saving…"
+                  onCancel={onClose}
+                  onSuccess={({ id }) => {
+                    void registerToken(id);
+                  }}
+                />
+              )}
+              {!setupSecret && !setupBusy && (
+                <Button onClick={startStripeSetup}>Show card form</Button>
+              )}
+            </div>
+          )}
+
+          {provider === "paystack" && providerInfo?.publishable_key && paystackRef && (
+            <div className="space-y-2">
+              <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                Paystack charges a 1-unit verification to save your card. The amount is automatically
+                refunded; the card gets stored for future top-ups.
+              </div>
+              <PaystackInline
+                publicKey={providerInfo.publishable_key}
+                amountCents={100}
+                currency="USD"
+                email={`tenant@setup.invalid`}
+                reference={paystackRef}
+                onSuccess={(ref) => void registerToken(ref)}
+                onCancel={onClose}
+                label="Verify card with Paystack"
+              />
+            </div>
+          )}
+
+          {(!providerInfo?.publishable_key) && (
+            <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {providerInfo
+                ? "This provider has no publishable key on file — ask your admin to set it under Settings → Payment gateways."
+                : "Pick a provider to continue."}
+            </div>
+          )}
         </div>
         {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || !token}>{busy ? "Adding…" : "Add"}</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
