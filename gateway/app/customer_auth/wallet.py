@@ -71,12 +71,44 @@ def _serialize_summary(w: Wallet, ledger: list[dict]) -> WalletSummaryOut:
 async def get_wallet(
     claims: Annotated[dict, Depends(require_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    currency: str = "USD",
 ) -> WalletSummaryOut:
+    """Single-currency view — defaults to USD for backcompat. Pass
+    `?currency=NGN` to see another currency's wallet for this tenant."""
     tenant_id = await _tenant_id_for(session, claims)
-    w = await wallet_service.get_or_create_wallet(session, tenant_id)
-    ledger = await wallet_service.recent_ledger(session, tenant_id, limit=20)
+    w = await wallet_service.get_or_create_wallet(session, tenant_id, currency)
+    ledger = await wallet_service.recent_ledger(
+        session, tenant_id, currency=currency, limit=20
+    )
     await session.commit()
     return _serialize_summary(w, ledger)
+
+
+class WalletRowOut(BaseModel):
+    currency: str
+    balance_micros: int
+    credit_limit_micros: int
+    auto_reload_enabled: bool
+
+
+@router.get("/wallets", response_model=list[WalletRowOut])
+async def list_wallets(
+    claims: Annotated[dict, Depends(require_customer)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[WalletRowOut]:
+    """One row per currency this tenant holds. The customer billing
+    page renders a balance card per row."""
+    tenant_id = await _tenant_id_for(session, claims)
+    wallets = await wallet_service.list_wallets(session, tenant_id)
+    return [
+        WalletRowOut(
+            currency=w.currency,
+            balance_micros=w.balance_micros,
+            credit_limit_micros=w.credit_limit_micros,
+            auto_reload_enabled=w.auto_reload_enabled,
+        )
+        for w in wallets
+    ]
 
 
 @router.get("/wallet/ledger")

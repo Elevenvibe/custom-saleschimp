@@ -29,9 +29,12 @@ from app.db import Base
 class Wallet(Base):
     __tablename__ = "wallets"
 
+    # Composite PK from migration 0010 — one row per (tenant, currency).
+    # Existing rows pre-0010 all have currency='USD' so the swap was a
+    # no-op for them.
     tenant_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    currency: Mapped[str] = mapped_column(String(8), primary_key=True, server_default="USD")
     balance_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
-    currency: Mapped[str] = mapped_column(String(8), nullable=False, server_default="USD")
     # Strict no-negative by default; admins can raise per tenant.
     credit_limit_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     auto_reload_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
