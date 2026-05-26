@@ -222,6 +222,40 @@ async def list_ledger(
     return await wallet_service.recent_ledger(session, tenant_id, limit=limit)
 
 
+@router.get("/tenants/{tenant_id}/payment-intents")
+async def list_tenant_payment_intents(
+    tenant_id: int,
+    _claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: int = 50,
+) -> list[dict]:
+    """Tenant-scoped view of payment_intents. The cross-tenant listing
+    lives at /api/admin/payments/intents; this one is filtered to a
+    single tenant so the drilldown doesn't have to grep client-side."""
+    from app.payments.models import PaymentIntent
+
+    rows = (
+        await session.execute(
+            select(PaymentIntent)
+            .where(PaymentIntent.tenant_id == tenant_id)
+            .order_by(PaymentIntent.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "provider": r.provider,
+            "provider_ref": r.provider_ref,
+            "amount_cents": r.amount_cents,
+            "currency": r.currency,
+            "status": r.status,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/tenants/{tenant_id}/usage", response_model=list[UsageRowOut])
 async def list_usage(
     tenant_id: int,
