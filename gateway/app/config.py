@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     price_sync_enabled: bool = False
     price_sync_interval_seconds: int = 60
 
+    # Background usage ingest from Dograh's /api/v1/organizations/usage
+    # surface. Per tenant we walk forward an id cursor and insert one
+    # usage_record + wallet charge per workflow_run. Opt-in until the
+    # Dograh URL + service token are set in the deploy.
+    usage_ingest_enabled: bool = False
+    usage_ingest_interval_seconds: int = 120
+    usage_ingest_page_size: int = 100
+
     # CORS allowlist for browser apps that call the gateway from a different
     # origin (admin UI + customer app). Comma-separated.
     cors_origins: str = (
