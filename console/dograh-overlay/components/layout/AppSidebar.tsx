@@ -483,6 +483,16 @@ export function AppSidebar() {
                       Account settings
                     </DropdownMenuItem>
                   )}
+                  {/* [saleschimp-overlay] Organization settings — opens the
+                      tenant org-admin page inside the console iframe so the
+                      Dograh chrome stays visible. Lives above "Platform
+                      Settings" because it's the more common destination
+                      (every org-admin tweaks branding / concurrency /
+                      add-ons; Platform Settings is the rarer admin path). */}
+                  <DropdownMenuItem onClick={() => router.push("/console-bridge/settings/organization")} className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Organization settings
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
                     <Settings className="mr-2 h-4 w-4" />
                     Platform Settings

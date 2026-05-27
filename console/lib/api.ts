@@ -197,6 +197,31 @@ export function makeRef(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// --- Organization Settings ----------------------------------------------
+
+export type OrgPackageInfo = {
+  id: number;
+  slug: string;
+  name: string;
+  concurrency_included: number;
+};
+
+export type OrgSettings = {
+  id: number;
+  name: string;
+  slug: string;
+  owner_email: string;
+  status: string;
+  dograh_org_id: number | null;
+  created_at: string;
+  logo_url: string | null;
+  favicon_url: string | null;
+  concurrent_calls_limit: number | null;
+  concurrent_calls_effective: number;
+  auto_fallback_enabled: boolean;
+  package: OrgPackageInfo | null;
+};
+
 export type LoginOut = {
   access_token: string;
   expires_in: number;

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,19 @@ class Tenant(Base):
     owner_email: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending_verification")
     signup_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # Branding overrides (org settings page). URL form today; file upload to
+    # S3/MinIO ships in a follow-up.
+    logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    favicon_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Tenant-side cap on concurrent calls. NULL → use package default; ints
+    # are validated against the package's concurrency_included in the service
+    # layer so a tenant can only dial DOWN their own ceiling.
+    concurrent_calls_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # When true, new assistants in this org get fallback providers wired in.
+    # Off by default; explicit opt-in by tenant or super-admin.
+    auto_fallback_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
