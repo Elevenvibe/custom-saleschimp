@@ -24,8 +24,11 @@ class DograhError(Exception):
 class DograhUser:
     id: int
     email: str
-    organization_id: int
-    provider_id: str
+    # /me may return None for these in some auth modes (Stack vs OSS); the
+    # session-exchange path uses the Bearer token we already have in hand, so
+    # the optional shape is fine.
+    organization_id: int | None
+    provider_id: str | None
     token: str  # Dograh-issued JWT (sub=user_id, signed with OSS_JWT_SECRET)
 
 
@@ -79,6 +82,30 @@ class DograhClient:
             organization_id=u["organization_id"],
             provider_id=u["provider_id"],
             token=data["token"],
+        )
+
+
+    async def get_me(self, *, token: str) -> DograhUser:
+        """Hit Dograh's GET /api/v1/auth/me with the user's bearer token.
+
+        The console browser forwards the Dograh auth cookie/token; we verify
+        it server-side by asking Dograh who owns it. Invalid / missing tokens
+        return 401 here so the route layer can map to a clean 401 upstream.
+        """
+        url = f"{self._base}/api/v1/auth/me"
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            r = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        if r.status_code in (401, 403):
+            raise DograhError(401, "dograh session invalid")
+        if r.status_code >= 400:
+            raise DograhError(r.status_code, _detail(r))
+        u = r.json()
+        return DograhUser(
+            id=u["id"],
+            email=u["email"],
+            organization_id=u.get("organization_id"),
+            provider_id=u.get("provider_id"),
+            token=token,
         )
 
 

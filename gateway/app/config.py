@@ -99,18 +99,26 @@ class Settings(BaseSettings):
     fx_fetcher_currencies: str = "NGN,EUR,GBP,KES,GHS,ZAR,INR"
 
     # CORS allowlist for browser apps that call the gateway from a different
-    # origin (admin UI + customer app). Comma-separated.
+    # origin. Listed in order of preference:
+    #   - 8081: unified URL (nginx fronting Dograh + console)
+    #   - 3040: bare console sidecar (dev convenience)
+    #   - 3020: super-admin UI
+    #   - 3030: legacy app-ui (kept while we deprecate it; remove once gone)
     cors_origins: str = (
+        "http://localhost:8081,https://app.mysaleschimp.com,"
+        "http://localhost:3040,"
         "http://localhost:3020,https://admin.mysaleschimp.com,"
-        "http://localhost:3030,https://app.mysaleschimp.com"
+        "http://localhost:3030"
     )
 
     # Public URL of the gateway (where the API + reverse proxy live).
     public_base_url: str = "http://localhost:8080"
 
-    # Public URL of the customer-facing Next.js app. Verification, invite, and
-    # password-reset links emailed to customers point here.
-    customer_app_url: str = "http://localhost:3030"
+    # Public URL of the customer-facing surface. Verification, invite, and
+    # password-reset links emailed to customers point here. Now points at
+    # the unified nginx-fronted URL with the /console basePath; the public
+    # pages live under console/app/(public)/{verify,accept-invite,signup,login}.
+    customer_app_url: str = "http://localhost:8081/console"
 
     # Where the post-verify / post-accept flow sends the user. The customer
     # app intercepts this and renders the onboarding wizard.

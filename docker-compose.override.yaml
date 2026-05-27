@@ -105,20 +105,52 @@ services:
     networks:
       - app-network
 
-  # Customer-facing Next.js app. Hosts signup/login/verify/accept-invite +
-  # onboarding wizard + customer dashboard. Eventually served at
-  # app.mysaleschimp.com; on localhost it's :3030.
-  app-ui:
-    image: saleschimp/app-ui:latest
+  # Local-dev nginx that unifies Dograh (:3010) + console (:3040) at one URL.
+  # Browse http://localhost:8081 → Dograh; http://localhost:8081/console → us.
+  # The `nginx` service in docker-compose.yaml is profile-gated to "remote",
+  # so this doesn't collide — `console-proxy` is local-dev only.
+  console-proxy:
+    image: nginx:alpine
+    container_name: console_proxy
+    ports:
+      - "8081:80"
+    volumes:
+      - ./console/nginx/unified.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      ui:
+        condition: service_started
+      console:
+        condition: service_started
+    networks:
+      - app-network
+
+  # SalesChimp Console — tenant-facing pages (wallet, billing, plans,
+  # marketplace) that will live INSIDE Dograh once nginx fronts both at one
+  # origin. Step A: just runs as a sidecar on :3040 so we can verify the
+  # build + route pipeline before doing the URL unification. Step B wires
+  # nginx so that /console/* on Dograh's URL proxies here.
+  #
+  # basePath="/console" in next.config.ts means every route is prefixed,
+  # so hitting `http://localhost:3040/console` lands on the home page.
+  console:
+    image: saleschimp/console:latest
     build:
-      context: ./app-ui
+      context: ./console
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_GATEWAY_URL: "${APP_UI_GATEWAY_URL:-http://localhost:8080}"
+      NEXT_PUBLIC_GATEWAY_URL: "${CONSOLE_GATEWAY_URL:-http://localhost:8080}"
     ports:
-      - "3030:3030"
+      - "3040:3040"
     depends_on:
       gateway:
         condition: service_started
     networks:
       - app-network
+
+  # REMOVED 2026-05-27 — app-ui was the legacy customer-facing Next.js
+  # app at :3030. All its pages (dashboard, billing, plans, marketplace,
+  # signup, login, verify, accept-invite) are ported into console/ and
+  # served at http://localhost:8081/console/* via the console-proxy.
+  # The directory at ./app-ui/ stays on disk as a tombstone for git
+  # history + rollback; delete with `rm -rf app-ui/` once you're sure
+  # nothing references it.

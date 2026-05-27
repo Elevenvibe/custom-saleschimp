@@ -1,0 +1,139 @@
+"use client";
+
+/**
+ * Console AppShell — sidebar layout that wraps every authed page.
+ *
+ * Mirrors Dograh's left-nav visual language (label "SALESCHIMP", section
+ * groups, lucide icons). When nginx fronts both Dograh + console at the
+ * unified URL, the user feels one product even though we're running our
+ * own chrome here — by design, since we don't want to take a tight
+ * dependency on Dograh's AppSidebar component upgrade path.
+ *
+ * Sidebar is fixed-width, collapses to icons under sm: in a follow-up.
+ */
+
+import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import {
+  Boxes,
+  CreditCard,
+  LayoutDashboard,
+  LogOut,
+  Sparkles,
+  Wallet,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { setToken, type SessionExchangeOut } from "@/lib/api";
+
+type NavItem = { title: string; href: string; icon: ReactNode };
+
+type NavSection = { label?: string; items: NavItem[] };
+
+const NAV: NavSection[] = [
+  {
+    items: [
+      { title: "Dashboard", href: "/console", icon: <LayoutDashboard className="size-4" /> },
+    ],
+  },
+  {
+    label: "MONEY",
+    items: [
+      { title: "Wallet & Billing", href: "/console/billing", icon: <Wallet className="size-4" /> },
+      { title: "Plans", href: "/console/billing/plans", icon: <CreditCard className="size-4" /> },
+    ],
+  },
+  {
+    label: "EXTEND",
+    items: [
+      { title: "Marketplace", href: "/console/marketplace", icon: <Boxes className="size-4" /> },
+    ],
+  },
+];
+
+export function AppShell({
+  session,
+  children,
+}: {
+  session: SessionExchangeOut;
+  children: ReactNode;
+}) {
+  const pathname = usePathname();
+
+  function signOut() {
+    setToken(null);
+    // Drop the user back to Dograh's logout — that clears the dograh_auth_token
+    // cookie, which means our next visit to /console will re-prompt for login.
+    window.location.href = "/handler/sign-out";
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <aside className="w-60 shrink-0 border-r border-[color:var(--border)] bg-[color:var(--card)] flex flex-col">
+        <div className="px-4 py-4 border-b border-[color:var(--border)]">
+          <Link href="/console" className="flex items-center gap-2">
+            <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-[color:var(--primary)] text-[color:var(--primary-foreground)]">
+              <Sparkles className="size-4" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold">SalesChimp</div>
+              <div className="text-[10px] uppercase tracking-wide text-[color:var(--muted-foreground)]">Console</div>
+            </div>
+          </Link>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+          {NAV.map((section, i) => (
+            <div key={i}>
+              {section.label && (
+                <div className="px-2 mb-1 text-[10px] uppercase tracking-wider text-[color:var(--muted-foreground)]">
+                  {section.label}
+                </div>
+              )}
+              <ul className="space-y-0.5">
+                {section.items.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    (item.href !== "/console" && pathname.startsWith(item.href));
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition",
+                          active
+                            ? "bg-[color:var(--muted)] font-medium"
+                            : "hover:bg-[color:var(--muted)]",
+                        )}
+                      >
+                        {item.icon}
+                        {item.title}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+
+        <div className="border-t border-[color:var(--border)] px-3 py-3">
+          <div className="text-xs text-[color:var(--muted-foreground)] truncate">{session.email}</div>
+          <div className="text-[10px] uppercase tracking-wide text-[color:var(--muted-foreground)]">
+            {session.tenant_slug} · {session.role}
+          </div>
+          <button
+            onClick={signOut}
+            className="mt-2 flex items-center gap-2 text-xs text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+          >
+            <LogOut className="size-3" />
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 min-w-0 bg-[color:var(--background)]">{children}</main>
+    </div>
+  );
+}
