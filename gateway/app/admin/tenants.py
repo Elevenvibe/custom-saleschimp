@@ -78,11 +78,61 @@ async def list_tenants(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    # Filters — all optional. Composed AND-style; total reflects the
+    # filtered set so the UI's pagination math stays correct.
+    #
+    # status: one of active / suspended / cancelled / pending_verification,
+    #         or the synthetic 'inactive' which unions suspended+cancelled
+    #         (matches what the UI calls "inactive" in the filter chip).
+    # q: substring match against name / slug / owner_email, case-insensitive.
+    # created_from / created_to: ISO date strings (YYYY-MM-DD). _from is
+    #         inclusive; _to is exclusive of midnight the next day so the
+    #         UI can pass the same date to mean "include that day".
+    status_filter: str | None = Query(None, alias="status"),
+    q: str | None = Query(None, min_length=1, max_length=200),
+    created_from: str | None = Query(None, description="ISO date YYYY-MM-DD, inclusive"),
+    created_to: str | None = Query(None, description="ISO date YYYY-MM-DD, inclusive"),
 ) -> dict:
-    total = (await session.execute(select(func.count()).select_from(Tenant))).scalar_one()
+    from datetime import date, datetime, timedelta
+
+    stmt = select(Tenant)
+
+    if status_filter:
+        if status_filter == "inactive":
+            stmt = stmt.where(Tenant.status.in_(("suspended", "cancelled")))
+        else:
+            stmt = stmt.where(Tenant.status == status_filter)
+
+    if q:
+        like = f"%{q.lower()}%"
+        stmt = stmt.where(
+            func.lower(Tenant.name).like(like)
+            | func.lower(Tenant.slug).like(like)
+            | func.lower(Tenant.owner_email).like(like)
+        )
+
+    def _parse(d: str) -> date:
+        return datetime.strptime(d, "%Y-%m-%d").date()
+
+    if created_from:
+        try:
+            stmt = stmt.where(Tenant.created_at >= _parse(created_from))
+        except ValueError as e:
+            raise HTTPException(400, f"created_from must be YYYY-MM-DD: {e}") from None
+    if created_to:
+        try:
+            # Inclusive — bump to the next day at 00:00 and use <.
+            stmt = stmt.where(Tenant.created_at < _parse(created_to) + timedelta(days=1))
+        except ValueError as e:
+            raise HTTPException(400, f"created_to must be YYYY-MM-DD: {e}") from None
+
+    # Reuse the filtered statement for the count so pagination is accurate.
+    total = (
+        await session.execute(select(func.count()).select_from(stmt.subquery()))
+    ).scalar_one()
     rows = (
         await session.execute(
-            select(Tenant).order_by(Tenant.created_at.desc()).limit(limit).offset(offset)
+            stmt.order_by(Tenant.created_at.desc()).limit(limit).offset(offset)
         )
     ).scalars().all()
     return {
