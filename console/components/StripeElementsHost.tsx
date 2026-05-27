@@ -102,9 +102,10 @@ function ElementsInner({
     setError(null);
     try {
       // `redirect: "if_required"` keeps card-only flows on-page; only
-      // 3DS / redirect-required methods route to the return_url.
-      // We pass the current page so a redirect-flow returns to /billing.
-      const returnUrl = `${window.location.origin}/billing`;
+      // 3DS / redirect-required methods route to the return_url. The
+      // path includes /console/ explicitly because Stripe redirects the
+      // browser directly — Next's basePath handling never sees this URL.
+      const returnUrl = `${window.location.origin}/console/billing`;
       // Branch up front so TypeScript can narrow each result shape —
       // confirmSetup returns { setupIntent } and confirmPayment returns
       // { paymentIntent }; the discriminated union doesn't survive a

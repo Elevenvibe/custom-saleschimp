@@ -33,7 +33,9 @@ export default function LoginPage() {
         auth: false,
       });
       setToken(r.access_token);
-      router.replace("/console");
+      // basePath="/console" is set in next.config.ts; Next prepends it
+      // automatically, so router targets are written without the prefix.
+      router.replace("/");
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 401
@@ -52,7 +54,7 @@ export default function LoginPage() {
       footer={
         <>
           New here?{" "}
-          <Link href="/console/signup" className="underline">
+          <Link href="/signup" className="underline">
             Create an account
           </Link>
         </>

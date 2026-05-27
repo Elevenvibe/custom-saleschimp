@@ -63,7 +63,8 @@ function Inner() {
         auth: false,
       });
       setToken(r.access_token);
-      router.replace("/console");
+      // basePath in next.config.ts; targets are without the prefix.
+      router.replace("/");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : (err as Error).message);
     } finally {

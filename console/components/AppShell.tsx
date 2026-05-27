@@ -31,23 +31,29 @@ type NavItem = { title: string; href: string; icon: ReactNode };
 
 type NavSection = { label?: string; items: NavItem[] };
 
+// Hrefs are written WITHOUT the /console prefix because Next's basePath
+// (set in next.config.ts) prepends it automatically. Writing "/console/x"
+// here turns into "/console/console/x" — the classic basePath double-prefix
+// bug. Same rule applies in router.replace() and <Link> hrefs everywhere
+// in this folder; cross-app links to Dograh (e.g. /handler/sign-out) must
+// bypass Next via plain <a> tags or window.location.
 const NAV: NavSection[] = [
   {
     items: [
-      { title: "Dashboard", href: "/console", icon: <LayoutDashboard className="size-4" /> },
+      { title: "Dashboard", href: "/", icon: <LayoutDashboard className="size-4" /> },
     ],
   },
   {
     label: "MONEY",
     items: [
-      { title: "Wallet & Billing", href: "/console/billing", icon: <Wallet className="size-4" /> },
-      { title: "Plans", href: "/console/billing/plans", icon: <CreditCard className="size-4" /> },
+      { title: "Wallet & Billing", href: "/billing", icon: <Wallet className="size-4" /> },
+      { title: "Plans", href: "/billing/plans", icon: <CreditCard className="size-4" /> },
     ],
   },
   {
     label: "EXTEND",
     items: [
-      { title: "Marketplace", href: "/console/marketplace", icon: <Boxes className="size-4" /> },
+      { title: "Marketplace", href: "/marketplace", icon: <Boxes className="size-4" /> },
     ],
   },
 ];
@@ -72,7 +78,7 @@ export function AppShell({
     <div className="flex min-h-screen">
       <aside className="w-60 shrink-0 border-r border-[color:var(--border)] bg-[color:var(--card)] flex flex-col">
         <div className="px-4 py-4 border-b border-[color:var(--border)]">
-          <Link href="/console" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-[color:var(--primary)] text-[color:var(--primary-foreground)]">
               <Sparkles className="size-4" />
             </div>
@@ -95,7 +101,11 @@ export function AppShell({
                 {section.items.map((item) => {
                   const active =
                     pathname === item.href ||
-                    (item.href !== "/console" && pathname.startsWith(item.href));
+                    // usePathname() returns paths WITHOUT the basePath, so we
+                    // compare against the stripped hrefs above. "/" is the
+                    // dashboard root; treat it as an exact match only so it
+                    // doesn't claim "active" on every other route.
+                    (item.href !== "/" && pathname.startsWith(item.href));
                   return (
                     <li key={item.href}>
                       <Link

@@ -83,7 +83,7 @@ export default function SignupPage() {
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/console/login" className="underline">
+          <Link href="/login" className="underline">
             Sign in
           </Link>
         </>

@@ -36,7 +36,8 @@ function Inner() {
     api<VerifyOut>(`/api/auth/verify?token=${encodeURIComponent(token)}`, { auth: false })
       .then((r) => {
         setToken(r.access_token);
-        router.replace("/console");
+        // basePath in next.config.ts; targets are without the prefix.
+        router.replace("/");
       })
       .catch((e) => setError((e as Error).message));
   }, [token, router]);

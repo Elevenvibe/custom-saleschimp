@@ -13,7 +13,6 @@
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { ensureSession, type SessionExchangeOut } from "@/lib/api";
 
@@ -62,12 +61,18 @@ export function AuthGate({ children }: { children: (s: SessionExchangeOut) => Re
         <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
           The console uses your Dograh session. Sign in to Dograh first, then come back here.
         </p>
-        <Link
+        {/*
+          Dograh's login lives at /auth/login on the SAME host (nginx routes
+          / to Dograh). Next's <Link> would basePath-prepend `/console`,
+          turning this into `/console/auth/login` (a 404). Plain <a> is
+          correct here because the destination is outside this Next app.
+        */}
+        <a
           href="/auth/login"
           className="mt-6 inline-block rounded-md bg-[color:var(--primary)] px-4 py-2 text-sm text-[color:var(--primary-foreground)] hover:opacity-90"
         >
           Go to sign in
-        </Link>
+        </a>
       </div>
     );
   }

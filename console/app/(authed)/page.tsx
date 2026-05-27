@@ -62,18 +62,19 @@ export default function DashboardPage() {
           {wallet ? wallet.currency : "loading…"}
         </div>
         <Link
-          href="/console/billing"
+          href="/billing"
           className="mt-4 inline-block rounded-md border border-[color:var(--border)] px-3 py-1.5 text-sm hover:bg-[color:var(--muted)]"
         >
           Manage wallet →
         </Link>
       </section>
 
-      {/* Quick links */}
+      {/* Quick links — hrefs are stripped of the /console basePath; Next
+          prepends it automatically. See note in AppShell.tsx. */}
       <section className="grid gap-3 md:grid-cols-3">
-        <Tile href="/console/billing" icon={<Wallet className="size-4" />} title="Billing" body="Wallet, ledger, top-ups." />
-        <Tile href="/console/billing/plans" icon={<CreditCard className="size-4" />} title="Plans" body="Switch tiers, pick intervals." />
-        <Tile href="/console/marketplace" icon={<Boxes className="size-4" />} title="Marketplace" body="Browse + install plugins." />
+        <Tile href="/billing" icon={<Wallet className="size-4" />} title="Billing" body="Wallet, ledger, top-ups." />
+        <Tile href="/billing/plans" icon={<CreditCard className="size-4" />} title="Plans" body="Switch tiers, pick intervals." />
+        <Tile href="/marketplace" icon={<Boxes className="size-4" />} title="Marketplace" body="Browse + install plugins." />
       </section>
     </div>
   );
