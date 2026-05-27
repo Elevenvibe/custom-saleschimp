@@ -25,12 +25,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { api, ApiError, type OrgSettings } from "@/lib/api";
+import { api, ApiError, GATEWAY, getToken, type OrgSettings } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, Upload } from "lucide-react";
+import { useRef } from "react";
 
 export default function OrgSettingsPage() {
   const [data, setData] = useState<OrgSettings | null>(null);
@@ -155,27 +156,24 @@ function BrandingCard({
         <Label htmlFor="org-name">Organization name</Label>
         <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} />
       </div>
-      <div>
-        <Label htmlFor="org-logo">Logo URL</Label>
-        <Input
-          id="org-logo"
-          value={logo}
-          onChange={(e) => setLogo(e.target.value)}
-          placeholder="https://cdn.example.com/logo.png"
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Paste a public URL. File upload arrives in a follow-up release.
-        </p>
-      </div>
-      <div>
-        <Label htmlFor="org-favicon">Favicon URL</Label>
-        <Input
-          id="org-favicon"
-          value={favicon}
-          onChange={(e) => setFavicon(e.target.value)}
-          placeholder="https://cdn.example.com/favicon.ico"
-        />
-      </div>
+      <BrandingAssetField
+        id="org-logo"
+        label="Logo"
+        kind="logo"
+        value={logo}
+        onChange={setLogo}
+        onUploaded={onSaved}
+        placeholder="https://cdn.example.com/logo.png"
+      />
+      <BrandingAssetField
+        id="org-favicon"
+        label="Favicon"
+        kind="favicon"
+        value={favicon}
+        onChange={setFavicon}
+        onUploaded={onSaved}
+        placeholder="https://cdn.example.com/favicon.ico"
+      />
       {error && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
       )}
@@ -501,5 +499,142 @@ function DangerZone({ data }: { data: OrgSettings }) {
         </Button>
       </div>
     </section>
+  );
+}
+
+
+/**
+ * Hybrid URL-input + file-upload field for branding assets.
+ *
+ * Two ways to set a logo or favicon:
+ *   1. Paste a public URL (works for already-hosted assets — e.g. a
+ *      brand CDN). Saves on the next "Save branding" click.
+ *   2. Click Upload, pick a file, the browser POSTs a multipart form
+ *      to /api/tenant/settings/organization/branding. The gateway
+ *      stores the file in MinIO under tenants/<id>/<kind>-<ts>.<ext>
+ *      with a public-read bucket policy, then persists the URL on
+ *      the tenant row. We mirror the returned URL into the input so
+ *      the parent component sees it for the eventual PATCH (and the
+ *      preview below updates immediately).
+ *
+ * MAX 2 MB; accepted types limited to png / jpeg / webp / svg / ico.
+ * Validation happens server-side in storage.branding; UI keeps the
+ * accept attribute aligned so OS-level pickers filter correctly.
+ */
+function BrandingAssetField({
+  id,
+  label,
+  kind,
+  value,
+  onChange,
+  onUploaded,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  kind: "logo" | "favicon";
+  value: string;
+  onChange: (v: string) => void;
+  onUploaded: () => void;
+  placeholder: string;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("kind", kind);
+      form.append("file", file);
+      // We bypass api() here because it forces JSON; the multipart
+      // upload needs the browser to set Content-Type with the boundary
+      // itself. Manually attach the Bearer token via getToken().
+      const token = getToken();
+      const res = await fetch(`${GATEWAY}/api/tenant/settings/organization/branding`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let detail = text;
+        try {
+          const body = JSON.parse(text);
+          detail = body?.detail ?? text;
+        } catch {
+          // body wasn't JSON — use raw text.
+        }
+        throw new Error(detail || `upload failed (${res.status})`);
+      }
+      const body = (await res.json()) as { url: string };
+      onChange(body.url);
+      onUploaded();
+    } catch (e) {
+      setUploadError((e as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex gap-2">
+        <Input
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Upload className="size-4" />
+          )}
+          {uploading ? "Uploading…" : "Upload"}
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFile(f);
+          }}
+        />
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Paste a public URL or upload a file (max 2 MB, PNG / JPEG / WEBP / SVG / ICO).
+      </p>
+      {value && (
+        <div className="mt-2 inline-flex items-center gap-2 rounded-md border bg-muted/30 px-2 py-1">
+          {/* Live preview — handy for confirming the upload landed. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={value}
+            alt={`${label} preview`}
+            className="h-8 w-auto max-w-32 object-contain"
+          />
+          <span className="text-xs text-muted-foreground">preview</span>
+        </div>
+      )}
+      {uploadError && (
+        <div className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {uploadError}
+        </div>
+      )}
+    </div>
   );
 }

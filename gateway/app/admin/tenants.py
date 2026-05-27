@@ -1,7 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,13 @@ class TenantOut(BaseModel):
     owner_email: str
     status: str
     created_at: str
+    # Surfaced from migration 0013 so super-admins can mirror the tenant-
+    # side toggle on /console/settings/organization without context-
+    # switching. PATCH /api/admin/tenants/{id} accepts these too.
+    logo_url: str | None = None
+    favicon_url: str | None = None
+    concurrent_calls_limit: int | None = None
+    auto_fallback_enabled: bool = False
 
 
 class TenantCreateIn(BaseModel):
@@ -58,6 +65,10 @@ def _serialize(t: Tenant) -> TenantOut:
         owner_email=t.owner_email,
         status=t.status,
         created_at=t.created_at.isoformat(),
+        logo_url=t.logo_url,
+        favicon_url=t.favicon_url,
+        concurrent_calls_limit=t.concurrent_calls_limit,
+        auto_fallback_enabled=t.auto_fallback_enabled,
     )
 
 
@@ -142,6 +153,62 @@ async def get_tenant(
             for m in members
         ],
     }
+
+
+class TenantPatchIn(BaseModel):
+    """Subset of fields admins can flip without touching status.
+    Status changes still go through PATCH /status because they have
+    their own audit + side-effect story (Activate / Suspend buttons)."""
+
+    auto_fallback_enabled: bool | None = None
+    concurrent_calls_limit: int | None = None
+    logo_url: str | None = None
+    favicon_url: str | None = None
+
+
+@router.patch("/{tenant_id}", response_model=TenantOut)
+async def update_tenant(
+    tenant_id: int,
+    body: TenantPatchIn,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TenantOut:
+    """Mirror of /api/tenant/settings/organization PATCH for super-
+    admins. Unlike the tenant-side endpoint we don't enforce the
+    package concurrency ceiling here — admins can set whatever they
+    want on behalf of a tenant (e.g. emergency throttle). Audit row
+    captures the diff so the change is traceable."""
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+
+    changes: dict[str, object] = {}
+    if body.auto_fallback_enabled is not None and body.auto_fallback_enabled != tenant.auto_fallback_enabled:
+        tenant.auto_fallback_enabled = body.auto_fallback_enabled
+        changes["auto_fallback_enabled"] = body.auto_fallback_enabled
+    if body.concurrent_calls_limit is not None:
+        tenant.concurrent_calls_limit = body.concurrent_calls_limit
+        changes["concurrent_calls_limit"] = body.concurrent_calls_limit
+    if body.logo_url is not None:
+        tenant.logo_url = body.logo_url.strip() or None
+        changes["logo_url"] = tenant.logo_url
+    if body.favicon_url is not None:
+        tenant.favicon_url = body.favicon_url.strip() or None
+        changes["favicon_url"] = tenant.favicon_url
+
+    if changes:
+        await record_audit(
+            session,
+            actor_kind="platform",
+            actor_user_id=_actor_id(claims),
+            action="admin.tenant.update",
+            target_kind="tenant",
+            target_id=str(tenant.id),
+            payload=changes,
+        )
+        await session.commit()
+        await session.refresh(tenant)
+    return _serialize(tenant)
 
 
 @router.patch("/{tenant_id}/status")
@@ -265,6 +332,80 @@ async def complete_signup(
         dograh_user_id=dograh_user.id,
     )
     return _serialize(tenant)
+
+
+class HardDeleteIn(BaseModel):
+    """Belt-and-braces destructive confirmation. Caller must echo the
+    tenant slug exactly — slug rather than name because slugs are
+    unique + URL-safe + can't be accidentally renamed mid-flight."""
+
+    confirm_slug: str = Field(min_length=1, max_length=64)
+
+
+@router.delete("/{tenant_id}/purge", status_code=status.HTTP_200_OK)
+async def hard_delete_tenant(
+    tenant_id: int,
+    body: HardDeleteIn,
+    request: Request,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, object]:
+    """Permanent purge. ONLY safe to call after the tenant has been
+    marked status='cancelled' (i.e. they've gone through the
+    tenant-side delete flow and the cooling-off period). The route
+    refuses any other status to make sure a super-admin can't
+    accidentally nuke a live customer with one wrong click.
+
+    Cascade behavior:
+      - Postgres FK ON DELETE CASCADE handles tenant_members, invites,
+        wallet, wallet_ledger, payment_methods, payment_intents,
+        usage_records, tenant_plugin_installs, etc. — all of those
+        carry tenant_id FKs into the tenants table.
+      - Dograh user / org cleanup is INTENTIONALLY out of scope here:
+        upstream Dograh doesn't expose admin destroy on /api/v1/auth/*
+        and we don't want to leave half-deleted state if it fails.
+        Leave the Dograh org orphaned; document the runbook step
+        separately for ops to handle via Dograh's superuser CLI.
+
+    Audit row captures the deletion with the actor + slug so
+    "what happened to tenant N" is traceable forever.
+    """
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+    if tenant.status != "cancelled":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "tenant must be in status='cancelled' before hard delete. "
+            "Use the tenant-side delete or PATCH /status first.",
+        )
+    if body.confirm_slug.strip() != tenant.slug:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "confirm_slug does not match the tenant slug",
+        )
+
+    snapshot = {
+        "id": tenant.id,
+        "slug": tenant.slug,
+        "name": tenant.name,
+        "owner_email": tenant.owner_email,
+        "dograh_org_id": tenant.dograh_org_id,
+    }
+    await session.delete(tenant)
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=_actor_id(claims),
+        action="admin.tenant.purge",
+        target_kind="tenant",
+        target_id=str(tenant_id),
+        request=request,
+        payload={"deleted": snapshot},
+    )
+    await session.commit()
+    log.warning("admin.tenant.purged", **snapshot)
+    return {"purged": True, "id": tenant_id, "dograh_org_id": snapshot["dograh_org_id"]}
 
 
 def _actor_id(claims: dict) -> int | None:

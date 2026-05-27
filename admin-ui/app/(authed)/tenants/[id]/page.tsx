@@ -88,6 +88,30 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  async function purgeTenant() {
+    if (!data) return;
+    const slug = prompt(
+      `PERMANENT DELETE: this wipes every row tied to tenant "${data.tenant.name}" — wallets, ledger, payment intents, invites, plugin installs, SSO config, everything.\n\nType the slug "${data.tenant.slug}" to confirm:`,
+    );
+    if (slug !== data.tenant.slug) {
+      if (slug !== null) alert("Slug didn't match — nothing was deleted.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/tenants/${id}/purge`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirm_slug: slug }),
+      });
+      // Redirect to the tenants list — the page we're on no longer exists.
+      window.location.href = "/tenants";
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
   async function completeSignup() {
     if (
       !confirm(
@@ -152,6 +176,15 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
                 Suspend
               </Button>
             )}
+            {/* Purge — only available once the tenant is cancelled.
+                Hard-deletes every row tied to this tenant via FK
+                cascade. Use as the final step after the tenant-side
+                /api/tenant/settings/organization DELETE has run. */}
+            {t.status === "cancelled" && (
+              <Button variant="destructive" size="sm" disabled={busy} onClick={purgeTenant}>
+                <Trash2 className="size-4" /> Purge permanently
+              </Button>
+            )}
           </div>
         }
       />
@@ -166,6 +199,20 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
             <Field label="Status" value={t.status} />
             <Field label="Dograh org id" value={t.dograh_org_id ?? "—"} />
             <Field label="Created" value={new Date(t.created_at).toLocaleString()} />
+            <Field
+              label="Concurrent calls cap"
+              value={t.concurrent_calls_limit ?? "package default"}
+            />
+            <Field
+              label="Auto-fallback for new assistants"
+              value={
+                <AutoFallbackToggle
+                  tenantId={t.id}
+                  initial={t.auto_fallback_enabled ?? false}
+                  onChanged={loadTenant}
+                />
+              }
+            />
           </div>
         </section>
 
@@ -399,3 +446,68 @@ function NewInviteDialog({
     </Dialog>
   );
 }
+
+
+/**
+ * Auto-fallback toggle for super-admins.
+ *
+ * Mirrors the tenant-side toggle at /console/settings/organization so
+ * platform staff can flip it on behalf of a tenant (e.g. for a customer
+ * who emailed support). Patches to PATCH /api/admin/tenants/{id} which
+ * accepts the same field set as the tenant endpoint minus the package
+ * ceiling check (admins have override authority).
+ */
+function AutoFallbackToggle({
+  tenantId,
+  initial,
+  onChanged,
+}: {
+  tenantId: number;
+  initial: boolean;
+  onChanged: () => void;
+}) {
+  const [enabled, setEnabled] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle(next: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/tenants/${tenantId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ auto_fallback_enabled: next }),
+      });
+      setEnabled(next);
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="inline-flex items-center cursor-pointer">
+        <input
+          type="checkbox"
+          className="peer sr-only"
+          checked={enabled}
+          disabled={busy}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        <span className="relative inline-block h-5 w-9 rounded-full bg-muted transition peer-checked:bg-primary">
+          <span className="absolute left-0.5 top-0.5 inline-block size-4 rounded-full bg-background transition peer-checked:translate-x-4" />
+        </span>
+      </label>
+      <span className="text-xs text-muted-foreground">
+        {enabled ? "on" : "off"}
+      </span>
+      {error && (
+        <span className="text-xs text-red-700" title={error}>(error)</span>
+      )}
+    </div>
+  );
+}
+

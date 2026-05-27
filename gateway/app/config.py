@@ -124,5 +124,16 @@ class Settings(BaseSettings):
     # app intercepts this and renders the onboarding wizard.
     post_verify_redirect: str = "/onboarding"
 
+    # MinIO / S3-compatible storage for tenant-branding uploads (logos +
+    # favicons on the org settings page). `endpoint` is the in-cluster host
+    # we use for actual put_object calls; `public_endpoint` is the host
+    # baked into URLs we return to the browser.
+    minio_endpoint: str = "minio:9000"
+    minio_public_endpoint: str = "http://localhost:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_branding_bucket: str = "tenant-branding"
+    minio_secure: bool = False
+
 
 settings = Settings()

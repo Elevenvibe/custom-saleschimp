@@ -24,9 +24,9 @@ flips status='cancelled' and writes an audit row. A super-admin can
 review and hard-delete via the admin console later if needed.
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,7 @@ from app.customer_auth.plans import _tenant_id_for
 from app.db import get_session
 from app.dograh_client import DograhClient, DograhError
 from app.packages.models import Package
+from app.storage.branding import StorageError, upload_branding
 from app.tenants.models import Tenant
 
 router = APIRouter(prefix="/settings/organization", tags=["customer-auth:org-settings"])
@@ -227,6 +228,76 @@ async def patch_org(
     return _serialize(tenant, pkg)
 
 
+class BrandingUploadOut(BaseModel):
+    url: str
+    kind: str
+
+
+@router.post("/branding", response_model=BrandingUploadOut)
+async def upload_branding_asset(
+    request: Request,
+    claims: Annotated[dict, Depends(require_org_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    kind: Annotated[Literal["logo", "favicon"], Form()],
+    file: Annotated[UploadFile, File()],
+) -> BrandingUploadOut:
+    """Upload a logo or favicon to MinIO and persist the resulting URL
+    on the tenant row. Returns the public URL so the UI can use it
+    immediately without a follow-up GET.
+
+    Object key pattern includes a millisecond timestamp so successive
+    uploads don't overwrite — the browser caches forever (Cache-Control:
+    immutable) and old objects can be garbage-collected later.
+
+    Size + MIME validation lives in storage.branding so a bad upload
+    fails before we ever touch MinIO.
+    """
+    tenant_id = await _tenant_id_for(session, claims)
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+
+    data = await file.read()
+    try:
+        url = await upload_branding(
+            tenant_id=tenant_id,
+            kind=kind,
+            data=data,
+            content_type=file.content_type or "application/octet-stream",
+            filename=file.filename,
+        )
+    except StorageError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from None
+    except Exception as e:  # noqa: BLE001
+        # MinIO outage or auth issue — surface as 502 so the UI can show a
+        # network-level error instead of "validation failed".
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, f"storage upload failed: {e}"
+        ) from None
+
+    # Persist on the tenant row. PATCHing /api/tenant/settings/organization
+    # is the alternative; doing it here is one round-trip for the browser.
+    if kind == "logo":
+        tenant.logo_url = url
+    else:
+        tenant.favicon_url = url
+
+    sub = claims.get("sub", "")
+    actor_user_id = int(sub) if sub.isdigit() else None
+    await record_audit(
+        session,
+        actor_kind="tenant",
+        actor_user_id=actor_user_id,
+        action="tenant.org.branding_upload",
+        target_kind="tenant",
+        target_id=str(tenant.id),
+        request=request,
+        payload={"kind": kind, "url": url, "bytes": len(data)},
+    )
+    await session.commit()
+    return BrandingUploadOut(url=url, kind=kind)
+
+
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
 async def change_password(
     body: PasswordChangeIn,
@@ -262,25 +333,30 @@ async def change_password(
             status.HTTP_502_BAD_GATEWAY, "could not verify current password"
         ) from None
 
-    # Dograh's password-change API isn't wired through our DograhClient
-    # yet — when it lands, replace the NotImplementedError below with a
-    # real call. For today we audit + 501 so it's obvious in dev.
+    # Honest 501 — Dograh OSS itself doesn't ship a password-change
+    # endpoint (verified by grep'ing dograh/api/routes/auth.py; only
+    # /signup and /login exist). Until upstream adds one, password
+    # rotation requires admin DB action. We still audit the attempt
+    # so it's visible in audit_log, and the current-password check
+    # above prevents brute-forcing this route as a credential oracle.
     sub = claims.get("sub", "")
     actor_user_id = int(sub) if sub.isdigit() else None
     await record_audit(
         session,
         actor_kind="tenant",
         actor_user_id=actor_user_id,
-        action="tenant.org.password_change_attempt",
+        action="tenant.org.password_change_blocked",
         target_kind="tenant",
         target_id=str(actor_user_id) if actor_user_id else "?",
         request=request,
-        payload={"reason": "pending dograh client method"},
+        payload={"reason": "dograh oss has no password-change endpoint"},
     )
     await session.commit()
     raise HTTPException(
         status.HTTP_501_NOT_IMPLEMENTED,
-        "password change reaches Dograh in a follow-up — current password was verified",
+        "Dograh OSS does not expose a password-change endpoint. "
+        "Your current password was verified. Reach out to support to rotate "
+        "your password until this feature ships upstream.",
     )
 
 

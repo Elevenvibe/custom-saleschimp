@@ -98,6 +98,12 @@ export type Tenant = {
   owner_email: string;
   status: string;
   created_at: string;
+  // Org-settings fields from migration 0013. Optional so older Tenant
+  // responses (or stubs in tests) don't have to fill them in.
+  logo_url?: string | null;
+  favicon_url?: string | null;
+  concurrent_calls_limit?: number | null;
+  auto_fallback_enabled?: boolean;
 };
 
 export type PlatformUser = {

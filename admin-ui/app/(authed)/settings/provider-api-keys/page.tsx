@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ExternalLink, KeyRound, Trash2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExternalLink, KeyRound, Settings as SettingsIcon, Trash2 } from "lucide-react";
 
 const KIND_LABEL: Record<ProviderKind, string> = {
   llm: "LLM",
@@ -106,6 +107,21 @@ export default function ProviderApiKeysPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <Tabs defaultValue="api">
+        <TabsList>
+          <TabsTrigger value="api">
+            <KeyRound className="size-4" /> Provider API
+          </TabsTrigger>
+          <TabsTrigger value="settings">
+            <SettingsIcon className="size-4" /> Provider Settings
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="settings" className="mt-4">
+          <ProviderSettingsTab />
+        </TabsContent>
+
+        <TabsContent value="api" className="mt-4 space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Provider API keys</h2>
         <PageDescription>
@@ -193,6 +209,93 @@ export default function ProviderApiKeysPage() {
           }}
         />
       )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+/**
+ * Provider Settings tab — global controls that span every integrated
+ * provider. Lives alongside Provider API rather than as its own
+ * sidebar entry because the two tabs talk about the same thing
+ * (provider behavior); separating just keeps the API key list from
+ * crowding the settings switches.
+ *
+ * Current sections:
+ *   - Per-kind fallback chain — stub, displays a row per ProviderKind
+ *     with a placeholder "Coming soon" button. The runtime layer that
+ *     consumes a fallback chain ships in P3 alongside the plugin
+ *     hook fan-out; until then we collect feedback on the UX.
+ *
+ * Future sections (no schema yet, sketched here so the next round
+ * picks them up cleanly):
+ *   - Platform-wide rate limits per kind
+ *   - Cost guardrails (auto-disable provider over $X / hour)
+ *   - Outage retry / circuit-breaker timings
+ */
+function ProviderSettingsTab() {
+  const kinds: { value: ProviderKind; label: string; blurb: string }[] = [
+    { value: "llm", label: "LLM", blurb: "Reasoning + tool-call models." },
+    { value: "stt", label: "STT", blurb: "Speech-to-text transcription." },
+    { value: "tts", label: "TTS", blurb: "Text-to-speech synthesis." },
+    { value: "embedding", label: "Embedding", blurb: "Vector embedding models." },
+    { value: "telephony", label: "Telephony", blurb: "Carrier + SIP trunks." },
+    { value: "phone_number", label: "Phone Number", blurb: "Number purchase + lease." },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Provider Settings</h2>
+        <PageDescription>
+          Platform-wide provider behavior — fallback chains, rate limits, outage handling.
+          These compose with the per-tenant <code className="font-mono">auto_fallback_enabled</code>{" "}
+          toggle (Tenants → Tenant → Auto-fallback for new assistants) to determine which providers
+          actually get tried when a primary call fails.
+        </PageDescription>
+      </div>
+
+      <section className="rounded-lg border bg-card overflow-hidden">
+        <div className="px-4 py-3 border-b text-sm font-medium">Fallback chain by provider kind</div>
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2">Kind</th>
+              <th className="px-4 py-2">Description</th>
+              <th className="px-4 py-2">Fallback chain</th>
+              <th className="px-4 py-2 w-32" />
+            </tr>
+          </thead>
+          <tbody>
+            {kinds.map((k) => (
+              <tr key={k.value} className="border-t">
+                <td className="px-4 py-2">
+                  <Badge variant="secondary">{k.label}</Badge>
+                </td>
+                <td className="px-4 py-2 text-muted-foreground">{k.blurb}</td>
+                <td className="px-4 py-2 text-xs text-muted-foreground">
+                  Not configured — uses primary only
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <Button size="sm" variant="outline" disabled>
+                    Configure — coming soon
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="rounded-lg border border-dashed bg-muted/20 p-4">
+        <h3 className="text-sm font-medium">Per-tenant override</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The toggle that flips fallback on for new assistants in a specific organization lives on
+          the Tenant detail page under <strong>Auto-fallback for new assistants</strong>. This
+          settings tab is platform-wide; the tenant toggle is per-org.
+        </p>
+      </section>
     </div>
   );
 }
