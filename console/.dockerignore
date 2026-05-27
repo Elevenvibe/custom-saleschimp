@@ -2,3 +2,7 @@ node_modules
 .next
 .git
 *.log
+# dograh-overlay/ ships only inside Dockerfile.ui (sidebar overlay for the
+# Dograh image build). Keeping it out of the console image keeps things tidy
+# and prevents tsc from trying to type-check Dograh's own components.
+dograh-overlay

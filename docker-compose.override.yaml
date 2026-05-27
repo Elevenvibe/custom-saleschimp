@@ -7,16 +7,18 @@
 #   docker compose up -d
 
 services:
-  # Custom UI image bakes in branding overlays. UPSTREAM_VERSION must match
-  # the dograh/ submodule version (sans dograh-v prefix). scripts/update-dograh.sh
-  # keeps these aligned.
+  # Custom UI image. As of the console-sidebar overlay, we build Dograh's
+  # UI from source rather than pulling the prebuilt image — that's the
+  # only way to inject our AppSidebar.tsx with the BILLING section.
+  # Build context is repo root so the Dockerfile can read from both
+  # dograh/ui/ (source) and console/dograh-overlay/ (our overlay).
+  # First build is ~3-5 min; subsequent builds with layer caching are
+  # ~30 s when only the overlay or source-but-not-deps changes.
   ui:
     image: custom-saleschimp/dograh-ui:latest
     build:
       context: .
       dockerfile: Dockerfile.ui
-      args:
-        UPSTREAM_VERSION: 1.31.0
 
   # Create the gateway's Control DB on first boot. Runs after postgres is healthy,
   # exits immediately. Idempotent.

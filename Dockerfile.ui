@@ -1,13 +1,78 @@
-# Custom UI image: upstream dograh-ui + your branding overlay.
+# Custom UI image: Dograh's UI built FROM SOURCE so we can overlay our
+# AppSidebar.tsx (the only change vs upstream — adds a BILLING section
+# pointing at /console/*). Builds mirror dograh/ui/Dockerfile's three-
+# stage shape (deps → build → runtime) so the maintenance story is:
+# upstream changes their Dockerfile rarely; when they do, diff this
+# against dograh/ui/Dockerfile and re-merge.
 #
-# Bump UPSTREAM_VERSION in lockstep with the dograh/ submodule pin. The
-# scripts/update-dograh.sh helper does this for you. Note: published image
-# tags use the bare version (e.g. 1.31.0), not the git tag (dograh-v1.31.0).
+# Build context is the repo root (set in docker-compose.override.yaml)
+# so we can COPY from both dograh/ui/ AND our console/dograh-overlay/.
 
-ARG UPSTREAM_VERSION=1.31.0
-FROM ghcr.io/dograh-hq/dograh-ui:${UPSTREAM_VERSION}
+# ---------- Stage 1: deps ----------
+FROM node:20-alpine AS deps
+WORKDIR /app
 
-# Overlay branding assets into /app/public/. Any file in custom/ui/public/
-# with a name matching an upstream file replaces it; new files are added.
-# Trailing slashes matter: COPY src/ dst/ merges contents.
-COPY --chown=nextjs:nodejs custom/ui/public/ /app/public/
+# Native-module build deps for ARM + native node packages (sharp, etc).
+RUN apk add --no-cache python3 make g++ libc6-compat
+
+COPY dograh/ui/package*.json ./
+RUN rm -rf node_modules && (npm ci || npm install)
+
+# ---------- Stage 2: build ----------
+FROM node:20-alpine AS build
+WORKDIR /app
+
+RUN apk add --no-cache libc6-compat
+
+COPY --from=deps /app/node_modules ./node_modules
+
+# Pull in upstream source + config files. Mirrors dograh/ui/Dockerfile
+# exactly so we get the same build inputs.
+COPY dograh/ui/package*.json ./
+COPY dograh/ui/tsconfig.json ./
+COPY dograh/ui/next.config.ts ./
+COPY dograh/ui/components.json ./
+COPY dograh/ui/sentry.edge.config.ts ./
+COPY dograh/ui/sentry.server.config.ts ./
+COPY dograh/ui/postcss.config.mjs ./
+COPY dograh/ui/public ./public
+COPY dograh/ui/src ./src
+
+# --- SalesChimp customizations ---
+# 1. Branding overlay (logos, favicon) merges into public/. Matches
+#    the previous Dockerfile.ui behavior.
+COPY custom/ui/public/ ./public/
+# 2. Sidebar overlay — replaces the upstream AppSidebar.tsx with our
+#    BILLING-section variant. The file ships in console/ alongside the
+#    sidecar source so all SalesChimp UI customization lives in one
+#    place. See the header comment in the overlay file for the merge
+#    procedure when Dograh updates.
+COPY console/dograh-overlay/components/layout/AppSidebar.tsx ./src/components/layout/AppSidebar.tsx
+
+# Build-time env mirrors dograh/ui/Dockerfile. Dograh reads these at
+# Next build time to bake CDN paths into the compiled bundle.
+ENV NEXT_PUBLIC_NODE_ENV="oss"
+ENV NEXT_TELEMETRY_DISABLED="1"
+ENV NEXT_PUBLIC_CHATWOOT_URL="https://chat.dograh.com"
+ENV NEXT_PUBLIC_CHATWOOT_TOKEN="3fkFx2mCEjNHjM9gaNc4A82X"
+ENV BACKEND_URL="http://api:8000"
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+RUN npm run build && rm -rf /tmp/* /root/.npm
+
+# ---------- Stage 3: runtime ----------
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=build --chown=nextjs:nodejs /app/public ./public
+
+USER nextjs
+EXPOSE 3010
+CMD sh -c "echo '🚀 SalesChimp UI ready at http://localhost:3010 (with /console BILLING section)' && PORT=3010 node server.js"
