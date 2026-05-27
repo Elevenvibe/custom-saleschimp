@@ -472,10 +472,17 @@ export function AppSidebar() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => router.push("/handler/account-settings")} className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Account settings
-                  </DropdownMenuItem>
+                  {/* [saleschimp-overlay] /handler/account-settings is Stack
+                      Auth's route — in OSS / local-auth mode it returns
+                      "Stack Auth handler is disabled". Only render this
+                      item when the active auth provider is Stack; local-
+                      auth users get sign-out + the other settings rows. */}
+                  {provider === "stack" && (
+                    <DropdownMenuItem onClick={() => router.push("/handler/account-settings")} className="cursor-pointer">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Account settings
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
                     <Settings className="mr-2 h-4 w-4" />
                     Platform Settings
