@@ -431,11 +431,37 @@ export function AppSidebar() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  {/* [saleschimp-overlay] Organization settings — opens the
+                      tenant org-admin page inside the console iframe. Local-
+                      auth branch (most tenants use this). Mirrored in the
+                      Stack-auth branch below; if you change one, change both. */}
+                  <DropdownMenuItem onClick={() => router.push("/console-bridge/settings/organization")} className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Organization settings
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
                     <Settings className="mr-2 h-4 w-4" />
                     Platform Settings
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
+                  {/* [saleschimp-overlay] Wrap logout so we also drop the
+                      console's localStorage token. Otherwise a Dograh sign-
+                      out leaves a zombie sc_console_token alive that would
+                      log the next user into the previous tenant for one
+                      mount before AuthGate cycles. */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      try {
+                        if (typeof window !== "undefined") {
+                          localStorage.removeItem("sc_console_token");
+                        }
+                      } catch {
+                        // localStorage may be disabled — non-fatal, Dograh
+                        // logout still proceeds.
+                      }
+                      logout();
+                    }}
+                    className="cursor-pointer"
+                  >
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign out
                   </DropdownMenuItem>
@@ -501,7 +527,22 @@ export function AppSidebar() {
                     <CircleDollarSign className="mr-2 h-4 w-4" />
                     Usage
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
+                  {/* [saleschimp-overlay] Mirrors the local-auth branch — drop
+                      the console token alongside Dograh's logout so the two
+                      sessions tear down together. */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      try {
+                        if (typeof window !== "undefined") {
+                          localStorage.removeItem("sc_console_token");
+                        }
+                      } catch {
+                        // localStorage may be disabled — non-fatal.
+                      }
+                      logout();
+                    }}
+                    className="cursor-pointer"
+                  >
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign out
                   </DropdownMenuItem>

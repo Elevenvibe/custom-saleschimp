@@ -39,9 +39,32 @@ export async function api<T = unknown>(
   }
   const res = await fetch(`${GATEWAY}${path}`, { ...rest, headers: h });
   // On 401 drop the cached token so the next page load re-runs
-  // session-exchange against Dograh.
+  // session-exchange against Dograh. If we're embedded inside Dograh's
+  // chrome (the /console-bridge iframe), also bounce the top window to
+  // Dograh's login — otherwise the user gets stuck in an iframe whose
+  // contents 401 silently. This keeps Dograh + console as a single
+  // logical session: when one side fails auth, both sides re-login.
   if (res.status === 401 && auth) {
     setToken(null);
+    if (typeof window !== "undefined") {
+      let embedded = false;
+      try {
+        embedded = window.self !== window.top;
+      } catch {
+        embedded = true; // cross-origin top counts as embedded
+      }
+      if (embedded) {
+        try {
+          if (window.top) {
+            window.top.location.href = "/auth/login";
+          } else {
+            window.location.href = "/auth/login";
+          }
+        } catch {
+          window.location.href = "/auth/login";
+        }
+      }
+    }
   }
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
