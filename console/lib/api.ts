@@ -86,14 +86,20 @@ export type SessionExchangeOut = {
  * Resolve a console session. Two paths, tried in this order:
  *
  *   1. Local — an `sc_console_token` already in localStorage (from a prior
- *      session-exchange OR from the /console/login form). We validate it
- *      by calling /api/tenant/me; on 200 we synthesize a SessionExchangeOut
+ *      session-exchange OR from the /console/login form). Validate by
+ *      calling /api/tenant/me; on 200 we synthesize a SessionExchangeOut
  *      from the response and return it. On 401 we clear the stale token
  *      and fall through to path 2.
  *
- *   2. Dograh cookie — read `dograh_auth_token` from the same-origin
- *      cookie (the user has signed into Dograh), POST it to
- *      /api/auth/session-exchange, cache the resulting token.
+ *   2. Dograh session bridge — when the user clicked a BILLING link in
+ *      Dograh's sidebar, they're authenticated to Dograh but our console
+ *      has no token yet. Dograh's `dograh_auth_token` cookie is HttpOnly
+ *      (JS can't read it directly), so we ask Dograh's own
+ *      `GET /api/auth/oss` route — a same-origin Next handler that reads
+ *      the cookie server-side and returns `{ token, user }` as JSON.
+ *      We forward that token to our gateway's /api/auth/session-exchange
+ *      which validates it via Dograh's /api/v1/auth/me, looks up the
+ *      tenant, and mints an sc_console_token.
  *
  * Returns null when neither path produces a session — caller should
  * direct the user to sign in (either via /console/login or Dograh).
@@ -113,9 +119,24 @@ export async function ensureSession(): Promise<SessionExchangeOut | null> {
     setToken(null);
   }
 
-  // Path 2 — Dograh session cookie. Same-origin so JS can read it
-  // (OSS Dograh sets HttpOnly=false on dograh_auth_token).
-  const dograhToken = _readCookie("dograh_auth_token");
+  // Path 2 — Dograh session bridge. Same-origin via nginx so the browser
+  // automatically sends the cookie; Dograh's Next route reads it on the
+  // server and returns the token as JSON. This is exactly how Dograh's
+  // own LocalProviderWrapper bootstraps its in-memory token, so we don't
+  // need to fight HttpOnly.
+  let dograhToken: string | null = null;
+  try {
+    const ossRes = await fetch("/api/auth/oss", {
+      credentials: "include",
+    });
+    if (ossRes.ok) {
+      const body = (await ossRes.json()) as { token?: string };
+      dograhToken = body.token ?? null;
+    }
+  } catch {
+    // Network/CORS issue → fall through to null, caller renders the
+    // "sign in to continue" card.
+  }
   if (!dograhToken) return null;
 
   const res = await fetch(`${GATEWAY}/api/auth/session-exchange`, {
@@ -367,15 +388,3 @@ export type InstallRow = {
   price_micros: number;
   currency: string;
 };
-
-function _readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const target = `${name}=`;
-  for (const part of document.cookie.split(";")) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(target)) {
-      return decodeURIComponent(trimmed.slice(target.length));
-    }
-  }
-  return null;
-}
