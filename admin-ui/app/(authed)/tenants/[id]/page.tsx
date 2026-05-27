@@ -88,6 +88,26 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  async function completeSignup() {
+    if (
+      !confirm(
+        "Complete signup: call Dograh's signup API on this tenant's behalf, create the Dograh user + org, and mark the tenant active. Use this when the verification email never delivered.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/tenants/${id}/complete-signup`, { method: "POST" });
+      loadTenant();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (error)
     return (
       <div className="p-8">
@@ -113,7 +133,16 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
                 <KeyRound className="size-4" /> SSO
               </Button>
             </Link>
-            {t.status !== "active" && (
+            {/* Complete signup — only shown when the Dograh user/org
+                hasn't been provisioned yet. "Activate" alone won't fix a
+                pending tenant; this button calls Dograh's signup API
+                on their behalf and links it back. */}
+            {t.dograh_org_id == null && (
+              <Button size="sm" disabled={busy} onClick={completeSignup}>
+                Complete signup
+              </Button>
+            )}
+            {t.dograh_org_id != null && t.status !== "active" && (
               <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus("active")}>
                 Activate
               </Button>

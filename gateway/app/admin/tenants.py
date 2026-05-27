@@ -8,8 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
+from app.customer_auth.service import consume_pending_password, strip_pending_password
 from app.db import get_session
+from app.dograh_client import DograhClient, DograhError
 from app.tenants.models import Tenant, TenantMember
+
+import structlog
+
+log = structlog.get_logger()
 
 router = APIRouter(prefix="/tenants", tags=["admin:tenants"])
 
@@ -163,6 +169,101 @@ async def update_tenant_status(
         payload={"from": prev, "to": body.status},
     )
     await session.commit()
+    return _serialize(tenant)
+
+
+@router.post("/{tenant_id}/complete-signup", response_model=TenantOut)
+async def complete_signup(
+    tenant_id: int,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TenantOut:
+    """Force-verify a tenant on its operator's behalf.
+
+    Use case: dev environments where the verification email never
+    actually delivered, or any production case where a user signed
+    up but never clicked the link and the operator needs to unblock
+    them manually. Same effect as GET /api/auth/verify but
+    triggered by a super-admin.
+
+    Idempotent guard rails:
+      - 409 if the tenant already has dograh_org_id (the Dograh user
+        was created already — don't double-signup).
+      - 400 if there's no stashed password to consume (signup either
+        never ran or already cleared it via /verify).
+
+    Mirrors the verify endpoint's flow: consume password →
+    DograhClient.signup() → set dograh_org_id + status='active' →
+    create TenantMember row. Audited as admin.tenant.complete_signup.
+    """
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+    if tenant.dograh_org_id is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "tenant already has a Dograh org — signup already completed",
+        )
+    try:
+        password, full_name = consume_pending_password(tenant)
+    except ValueError:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "no pending password on this tenant — signup metadata missing or already consumed",
+        ) from None
+
+    client = DograhClient()
+    try:
+        dograh_user = await client.signup(
+            email=tenant.owner_email, password=password, name=full_name
+        )
+    except DograhError as e:
+        log.warning(
+            "complete_signup.dograh_signup_failed",
+            tenant_id=tenant_id,
+            error=e.detail,
+            status_code=e.status_code,
+        )
+        if e.status_code == 409:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "email already registered in Dograh",
+            ) from None
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "could not create user in Dograh"
+        ) from None
+
+    tenant.dograh_org_id = dograh_user.organization_id
+    tenant.status = "active"
+    strip_pending_password(tenant)
+
+    member = TenantMember(
+        tenant_id=tenant.id,
+        dograh_user_id=dograh_user.id,
+        email=dograh_user.email,
+        role="org_owner",
+    )
+    session.add(member)
+
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=_actor_id(claims),
+        action="admin.tenant.complete_signup",
+        target_kind="tenant",
+        target_id=str(tenant.id),
+        payload={
+            "dograh_org_id": dograh_user.organization_id,
+            "dograh_user_id": dograh_user.id,
+        },
+    )
+    await session.commit()
+    await session.refresh(tenant)
+    log.info(
+        "complete_signup.ok",
+        tenant_id=tenant.id,
+        dograh_user_id=dograh_user.id,
+    )
     return _serialize(tenant)
 
 
