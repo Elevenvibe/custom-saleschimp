@@ -67,11 +67,25 @@ export function AppShell({
 }) {
   const pathname = usePathname();
 
-  function signOut() {
+  async function signOut() {
+    // Two things to clear:
+    //   1. Our console JWT in localStorage (so AuthGate doesn't see a stale
+    //      session on the way out).
+    //   2. Dograh's auth cookies — `/api/auth/logout` is Dograh's local-auth
+    //      Next route that clears `dograh_auth_token` + `dograh_auth_user`.
+    //      Same origin via nginx (everything-not-/console/* routes to ui).
+    //      Stack-auth deployments would use `/handler/sign-out` instead, but
+    //      OSS/local-auth is what we ship with — and `/handler/*` returns
+    //      "Stack Auth handler is disabled" on local mode.
     setToken(null);
-    // Drop the user back to Dograh's logout — that clears the dograh_auth_token
-    // cookie, which means our next visit to /console will re-prompt for login.
-    window.location.href = "/handler/sign-out";
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Network failure during logout is non-fatal — the cookie + token
+      // are best-effort and the redirect below kicks the user to the
+      // login screen where re-auth happens anyway.
+    }
+    window.location.href = "/auth/login";
   }
 
   return (
