@@ -103,12 +103,12 @@ class Settings(BaseSettings):
     #   - 8081: unified URL (nginx fronting Dograh + console)
     #   - 3040: bare console sidecar (dev convenience)
     #   - 3020: super-admin UI
-    #   - 3030: legacy app-ui (kept while we deprecate it; remove once gone)
+    # localhost:3030 (legacy app-ui) removed 2026-05-27 — fully replaced
+    # by console/ + console-proxy.
     cors_origins: str = (
         "http://localhost:8081,https://app.mysaleschimp.com,"
         "http://localhost:3040,"
-        "http://localhost:3020,https://admin.mysaleschimp.com,"
-        "http://localhost:3030"
+        "http://localhost:3020,https://admin.mysaleschimp.com"
     )
 
     # Public URL of the gateway (where the API + reverse proxy live).
