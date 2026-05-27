@@ -83,35 +83,80 @@ export type SessionExchangeOut = {
 };
 
 /**
- * Read the Dograh auth token from same-origin cookie, hand it to the gateway,
- * cache the returned sc_console_token in localStorage. Idempotent — if we
- * already have a valid console token cached, we skip the exchange.
+ * Resolve a console session. Two paths, tried in this order:
  *
- * Returns the resolved session (or null if we couldn't get a Dograh token —
- * caller should redirect to /login on Dograh in that case).
+ *   1. Local — an `sc_console_token` already in localStorage (from a prior
+ *      session-exchange OR from the /console/login form). We validate it
+ *      by calling /api/tenant/me; on 200 we synthesize a SessionExchangeOut
+ *      from the response and return it. On 401 we clear the stale token
+ *      and fall through to path 2.
+ *
+ *   2. Dograh cookie — read `dograh_auth_token` from the same-origin
+ *      cookie (the user has signed into Dograh), POST it to
+ *      /api/auth/session-exchange, cache the resulting token.
+ *
+ * Returns null when neither path produces a session — caller should
+ * direct the user to sign in (either via /console/login or Dograh).
  */
 export async function ensureSession(): Promise<SessionExchangeOut | null> {
   if (typeof window === "undefined") return null;
-  // Cookie lookup runs on the client because the cookie is HttpOnly=false in
-  // Dograh's OSS mode (so JS can read it). If Dograh ever flips that flag we
-  // fall back to letting the gateway read the cookie directly via the proxy.
+
+  // Path 1 — existing console token. Covers the form-login path
+  // (/console/login → /api/auth/login → setToken) which never goes
+  // through session-exchange because Dograh's API login doesn't set
+  // a session cookie.
+  const existing = getToken();
+  if (existing) {
+    const me = await _meFromToken(existing);
+    if (me) return me;
+    // Stale / expired — drop it and try the cookie path.
+    setToken(null);
+  }
+
+  // Path 2 — Dograh session cookie. Same-origin so JS can read it
+  // (OSS Dograh sets HttpOnly=false on dograh_auth_token).
   const dograhToken = _readCookie("dograh_auth_token");
   if (!dograhToken) return null;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${dograhToken}`,
-  };
   const res = await fetch(`${GATEWAY}/api/auth/session-exchange`, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${dograhToken}`,
+    },
   });
-  if (!res.ok) {
-    return null;
-  }
+  if (!res.ok) return null;
   const body = (await res.json()) as SessionExchangeOut;
   setToken(body.access_token);
   return body;
+}
+
+/** Validate a token by calling /api/tenant/me. Returns a synthesized
+ *  SessionExchangeOut shape so AuthGate can render without caring
+ *  which path produced the session. */
+async function _meFromToken(token: string): Promise<SessionExchangeOut | null> {
+  try {
+    const res = await fetch(`${GATEWAY}/api/tenant/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      user: { email: string; role: string; org_id: number };
+      tenant: { slug: string };
+    };
+    // expires_in is informational only in the UI — we re-validate via
+    // /me on every mount anyway, so a stale value is harmless.
+    return {
+      access_token: token,
+      expires_in: 0,
+      role: body.user.role,
+      org_id: body.user.org_id,
+      tenant_slug: body.tenant.slug,
+      email: body.user.email,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // --- Shared types + formatters --------------------------------------------
