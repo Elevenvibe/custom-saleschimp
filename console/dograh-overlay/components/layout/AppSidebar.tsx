@@ -158,27 +158,27 @@ const NAV_SECTIONS: SidebarNavSection[] = [
       },
     ],
   },
-  // [saleschimp-overlay] BILLING section — links to the console sidecar
-  // at /console/* paths. Clicking these triggers a full-page navigation
-  // away from Dograh; nginx routes /console/* to the console:3040
-  // container which renders its own pages with a sidebar that matches
-  // this one visually so users perceive a seamless app.
+  // [saleschimp-overlay] BILLING section — these point at
+  // /console-bridge/* (a route owned by THIS Dograh app via the
+  // dograh-overlay) which renders the matching console page inside an
+  // iframe. Net effect: clicks stay on Dograh, sidebar stays visible,
+  // and the console sidecar's pages render embedded.
   {
     label: "BILLING",
     items: [
       {
         title: "Wallet",
-        url: "/console/billing",
+        url: "/console-bridge/billing",
         icon: Wallet,
       },
       {
         title: "Plans",
-        url: "/console/billing/plans",
+        url: "/console-bridge/billing/plans",
         icon: CreditCard,
       },
       {
         title: "Marketplace",
-        url: "/console/marketplace",
+        url: "/console-bridge/marketplace",
         icon: Boxes,
       },
     ],

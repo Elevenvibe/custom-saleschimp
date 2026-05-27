@@ -42,12 +42,18 @@ COPY dograh/ui/src ./src
 # 1. Branding overlay (logos, favicon) merges into public/. Matches
 #    the previous Dockerfile.ui behavior.
 COPY custom/ui/public/ ./public/
-# 2. Sidebar overlay — replaces the upstream AppSidebar.tsx with our
-#    BILLING-section variant. The file ships in console/ alongside the
-#    sidecar source so all SalesChimp UI customization lives in one
-#    place. See the header comment in the overlay file for the merge
-#    procedure when Dograh updates.
-COPY console/dograh-overlay/components/layout/AppSidebar.tsx ./src/components/layout/AppSidebar.tsx
+# 2. Source overlay — copies everything under console/dograh-overlay/
+#    on top of Dograh's src/. Today that's:
+#      - components/layout/AppSidebar.tsx   replaces upstream sidebar,
+#                                            adds the BILLING section.
+#      - app/console-bridge/[[...slug]]/    NEW route that iframes the
+#                                            console sidecar so links
+#                                            from the sidebar stay
+#                                            inside Dograh's chrome.
+#    Adding a file to the overlay = drop it under console/dograh-overlay/
+#    mirroring its position in dograh/ui/src/. See the header comments
+#    on each overlay file for the merge procedure when Dograh updates.
+COPY console/dograh-overlay/ ./src/
 
 # Build-time env mirrors dograh/ui/Dockerfile. Dograh reads these at
 # Next build time to bake CDN paths into the compiled bundle.

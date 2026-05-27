@@ -12,7 +12,7 @@
  * Sidebar is fixed-width, collapses to icons under sm: in a follow-up.
  */
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -66,6 +66,15 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  // Iframe detection. When the console renders inside Dograh's
+  // /console-bridge/* iframe host we suppress our own sidebar — the
+  // user is navigating via Dograh's left nav and a nested sidebar
+  // would be confusing. Runs in useEffect so the initial SSR / first
+  // paint match (avoids a hydration mismatch).
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => {
+    setEmbedded(typeof window !== "undefined" && window.self !== window.top);
+  }, []);
 
   async function signOut() {
     // Two things to clear:
@@ -86,6 +95,16 @@ export function AppShell({
       // login screen where re-auth happens anyway.
     }
     window.location.href = "/auth/login";
+  }
+
+  // Embedded mode: render JUST the content. Dograh's sidebar (parent
+  // window) is the source of truth for navigation; sign-out + user
+  // chip live on Dograh's own footer. Direct-URL hits to /console/*
+  // still get the full AppShell below.
+  if (embedded) {
+    return (
+      <main className="min-h-screen bg-[color:var(--background)]">{children}</main>
+    );
   }
 
   return (
