@@ -29,6 +29,7 @@ from app.customer_auth.invites import public_router as invites_public_router
 from app.customer_auth.marketplace import router as customer_marketplace_router
 from app.customer_auth.org_settings import router as org_settings_router
 from app.customer_auth.session_exchange import router as session_exchange_router
+from app.tickets.routes import tenant_router as tickets_tenant_router
 from app.customer_auth.sso import router as customer_sso_router
 from app.customer_auth.invites import tenant_router as invites_tenant_router
 from app.customer_auth.login import router as customer_login_router
@@ -94,6 +95,7 @@ app.include_router(invites_public_router, prefix="/api/auth")
 app.include_router(customer_sso_router, prefix="/api/auth")
 app.include_router(session_exchange_router, prefix="/api/auth")
 app.include_router(org_settings_router, prefix="/api/tenant")
+app.include_router(tickets_tenant_router, prefix="/api/tenant")
 app.include_router(customer_marketplace_router, prefix="/api/tenant")
 app.include_router(invites_tenant_router, prefix="/api/tenant")
 app.include_router(customer_me_router, prefix="/api/tenant")

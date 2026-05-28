@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ArrowUpCircle,
   AudioLines,
+  BarChart3, // [saleschimp-overlay] metrics icon
   Boxes, // [saleschimp-overlay] marketplace icon
   Brain,
   ChevronLeft,
@@ -27,12 +28,15 @@ import {
   FileText,
   Home,
   Key,
+  LifeBuoy, // [saleschimp-overlay] tickets icon
   LogOut,
   type LucideIcon,
   Megaphone,
   Phone,
   Settings,
   TrendingUp,
+  User, // [saleschimp-overlay] profile icon
+  Users, // [saleschimp-overlay] members icon
   Wallet, // [saleschimp-overlay] wallet/billing icon
   Workflow,
   Wrench,
@@ -151,10 +155,37 @@ const NAV_SECTIONS: SidebarNavSection[] = [
         url: "/usage",
         icon: TrendingUp,
       },
+      // [saleschimp-overlay] Tenant-side metrics view — calls, minutes,
+      // cost trend by day. Renders /console/observe/metrics in the bridge
+      // iframe so the sidebar stays visible.
+      {
+        title: "Metrics",
+        url: "/console-bridge/observe/metrics",
+        icon: BarChart3,
+      },
       {
         title: "Reports",
         url: "/reports",
         icon: FileText,
+      },
+    ],
+  },
+  // [saleschimp-overlay] ACCOUNT — tenant-side management surfaces that
+  // didn't exist in upstream Dograh: Members (invite/remove teammates,
+  // change roles) and Tickets (support inbox). Both render in the
+  // /console-bridge iframe.
+  {
+    label: "ACCOUNT",
+    items: [
+      {
+        title: "Members",
+        url: "/console-bridge/members",
+        icon: Users,
+      },
+      {
+        title: "Tickets",
+        url: "/console-bridge/tickets",
+        icon: LifeBuoy,
       },
     ],
   },
@@ -431,6 +462,14 @@ export function AppSidebar() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  {/* [saleschimp-overlay] Profile — the *user's* own page
+                      (name, email, password) as opposed to the *org's*
+                      settings below. Lives at /console/profile so users
+                      who land directly on /console can still get to it. */}
+                  <DropdownMenuItem onClick={() => router.push("/console-bridge/profile")} className="cursor-pointer">
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </DropdownMenuItem>
                   {/* [saleschimp-overlay] Organization settings — opens the
                       tenant org-admin page inside the console iframe. Local-
                       auth branch (most tenants use this). Mirrored in the
@@ -509,6 +548,12 @@ export function AppSidebar() {
                       Account settings
                     </DropdownMenuItem>
                   )}
+                  {/* [saleschimp-overlay] Profile — Stack-auth branch
+                      mirror of the local-auth Profile entry above. */}
+                  <DropdownMenuItem onClick={() => router.push("/console-bridge/profile")} className="cursor-pointer">
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </DropdownMenuItem>
                   {/* [saleschimp-overlay] Organization settings — opens the
                       tenant org-admin page inside the console iframe so the
                       Dograh chrome stays visible. Lives above "Platform

@@ -19,6 +19,12 @@ async def list_audit(
     offset: int = Query(0, ge=0),
     actor_kind: str | None = None,
     action: str | None = None,
+    # Target filters — letting the Logs tab on /tenants/[id] pull only
+    # entries that touch a single tenant. target_kind+target_id are the
+    # exact pair we record everywhere a tenant is the action's target
+    # (admin.tenant.create, customer.org.update, etc.).
+    target_kind: str | None = None,
+    target_id: str | None = None,
 ) -> dict:
     stmt = select(AuditLog).order_by(AuditLog.created_at.desc())
     count_stmt = select(func.count()).select_from(AuditLog)
@@ -28,6 +34,12 @@ async def list_audit(
     if action:
         stmt = stmt.where(AuditLog.action.like(f"{action}%"))
         count_stmt = count_stmt.where(AuditLog.action.like(f"{action}%"))
+    if target_kind:
+        stmt = stmt.where(AuditLog.target_kind == target_kind)
+        count_stmt = count_stmt.where(AuditLog.target_kind == target_kind)
+    if target_id:
+        stmt = stmt.where(AuditLog.target_id == target_id)
+        count_stmt = count_stmt.where(AuditLog.target_id == target_id)
 
     total = int((await session.execute(count_stmt)).scalar_one())
     rows = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
