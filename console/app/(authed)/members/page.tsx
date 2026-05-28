@@ -54,7 +54,12 @@ export default function MembersPage() {
   }, []);
   useEffect(reload, [reload]);
 
-  const isAdmin = me?.user.role === "org_admin" || me?.user.role === "owner";
+  // Roles in the gateway are org_owner / org_admin / org_member (matching
+  // the seed in bootstrap.py + customer_auth/routes.py). The org_owner is
+  // the original tenant creator; org_admin is a promoted member. Both can
+  // invite. Earlier this checked for "owner" — that string is never set,
+  // which is why the button was hidden for everyone (caught by user).
+  const isAdmin = me?.user.role === "org_owner" || me?.user.role === "org_admin";
 
   if (error) {
     return (
