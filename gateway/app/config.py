@@ -135,5 +135,11 @@ class Settings(BaseSettings):
     minio_branding_bucket: str = "tenant-branding"
     minio_secure: bool = False
 
+    # Mail fetcher (Communication → Email). Opt-in until at least one
+    # mailbox is configured under Settings → Email providers → IMAP.
+    # 60s default interval — IMAP is light enough to poll often.
+    mail_fetcher_enabled: bool = False
+    mail_fetcher_interval_seconds: int = 60
+
 
 settings = Settings()

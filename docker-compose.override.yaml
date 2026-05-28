@@ -72,6 +72,12 @@ services:
       # idempotent and per-provider work is small.
       GATEWAY_PRICE_SYNC_ENABLED: "${GATEWAY_PRICE_SYNC_ENABLED:-false}"
       GATEWAY_PRICE_SYNC_INTERVAL_SECONDS: "${GATEWAY_PRICE_SYNC_INTERVAL_SECONDS:-60}"
+      # IMAP fetcher for Communication → Email. Pulls UNSEEN messages
+      # from every mailbox_configs row with imap_active=true on a
+      # schedule. Enabled by default so a fresh deploy "just works"
+      # the moment a mailbox is configured; flip to false to pause.
+      GATEWAY_MAIL_FETCHER_ENABLED: "${GATEWAY_MAIL_FETCHER_ENABLED:-true}"
+      GATEWAY_MAIL_FETCHER_INTERVAL_SECONDS: "${GATEWAY_MAIL_FETCHER_INTERVAL_SECONDS:-60}"
       # MinIO connection for tenant-branding uploads (logos / favicons on
       # the org settings page). Same host the Dograh API uses for
       # call-recording storage, but in its own bucket so the two concerns

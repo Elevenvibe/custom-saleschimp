@@ -16,6 +16,7 @@ from app.payments.config_models import PaymentProviderConfig
 from app.payments.models import PaymentIntent, PaymentMethod
 from app.marketplace.models import PluginCatalogEntry, TenantPluginInstall
 from app.sso.models import SsoState, TenantSsoConfig
+from app.mailbox.mail_message import MailMessage
 from app.mailbox.models import MailboxConfig
 from app.tickets.models import SupportTicket, SupportTicketMessage
 from app.wallet.models import (

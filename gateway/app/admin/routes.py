@@ -16,6 +16,7 @@ from app.admin.marketplace import router as admin_marketplace_router
 from app.admin.sso import router as admin_sso_router
 from app.admin.tenants import router as tenants_router
 from app.admin.wallet import router as wallet_router
+from app.mailbox.mail_routes import admin_router as mail_admin_router
 from app.mailbox.routes import admin_router as mailbox_admin_router
 from app.tickets.routes import admin_router as tickets_admin_router
 
@@ -39,3 +40,4 @@ router.include_router(admin_sso_router)
 router.include_router(admin_marketplace_router)
 router.include_router(tickets_admin_router)
 router.include_router(mailbox_admin_router)
+router.include_router(mail_admin_router)

@@ -30,6 +30,8 @@ from app.customer_auth.marketplace import router as customer_marketplace_router
 from app.customer_auth.logs import router as customer_logs_router
 from app.customer_auth.org_settings import router as org_settings_router
 from app.customer_auth.session_exchange import router as session_exchange_router
+from app.mailbox.cron import start_mail_fetcher_loop, stop_mail_fetcher_loop
+from app.mailbox.mail_routes import tenant_router as mail_tenant_router
 from app.mailbox.routes import tenant_router as mailbox_tenant_router
 from app.tickets.routes import tenant_router as tickets_tenant_router
 from app.customer_auth.sso import router as customer_sso_router
@@ -60,7 +62,9 @@ async def lifespan(_: FastAPI):
     await start_usage_ingest_loop()
     await start_auto_reload_loop()
     await start_fx_fetcher_loop()
+    await start_mail_fetcher_loop()
     yield
+    await stop_mail_fetcher_loop()
     await stop_fx_fetcher_loop()
     await stop_auto_reload_loop()
     await stop_usage_ingest_loop()
@@ -100,6 +104,7 @@ app.include_router(org_settings_router, prefix="/api/tenant")
 app.include_router(tickets_tenant_router, prefix="/api/tenant")
 app.include_router(customer_logs_router, prefix="/api/tenant")
 app.include_router(mailbox_tenant_router, prefix="/api/tenant")
+app.include_router(mail_tenant_router, prefix="/api/tenant")
 app.include_router(customer_marketplace_router, prefix="/api/tenant")
 app.include_router(invites_tenant_router, prefix="/api/tenant")
 app.include_router(customer_me_router, prefix="/api/tenant")

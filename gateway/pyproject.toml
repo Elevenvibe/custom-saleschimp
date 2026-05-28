@@ -21,6 +21,9 @@ dependencies = [
   "websockets>=13",
   "aioboto3>=13",
   "aiosmtplib>=3",
+  # IMAP client for the mailbox fetcher (Communication → Email). Pulls
+  # UNSEEN messages on a schedule and stores them in mail_messages.
+  "aioimaplib>=1.1",
 ]
 
 [project.optional-dependencies]
