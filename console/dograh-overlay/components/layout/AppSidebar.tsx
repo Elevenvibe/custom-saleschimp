@@ -49,6 +49,17 @@ import React, { useRef } from "react";
 
 import ThemeToggle from "@/components/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
+// [saleschimp-overlay] breadcrumb is supplied by the overlay itself
+// (console/dograh-overlay/components/ui/breadcrumb.tsx) — Dograh upstream
+// doesn't ship this primitive. Proof that overlay-ui resolves natively.
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -344,21 +355,32 @@ export function AppSidebar() {
       <SidebarHeader className="border-b px-2 py-3 notranslate" translate="no">
         <div className="flex items-center justify-between">
           <div className={cn("flex items-center gap-2", isCollapsed && "hidden")}>
-            <Link
-              href="/"
-              className="notranslate flex items-center gap-2 px-2 text-xl font-bold"
-              translate="no"
-            >
-              Dograh
-              {versionInfo && (
-                <span
-                  className="notranslate text-xs font-normal text-muted-foreground"
-                  translate="no"
-                >
-                  v{versionInfo.ui}
-                </span>
-              )}
-            </Link>
+            {/* [saleschimp-overlay] White-label brand crumb rendered with
+                the overlay-supplied shadcn `breadcrumb` primitive
+                (console/dograh-overlay/components/ui/breadcrumb.tsx).
+                This is the live proof that the overlay-ui pattern reaches
+                the running UI on 8080/8081. The version tag + update
+                badges below are upstream Dograh features, left intact. */}
+            <Breadcrumb className="px-2">
+              <BreadcrumbList className="gap-1 sm:gap-1.5 text-base">
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link href="/" className="text-xl font-bold text-foreground">
+                      SalesChimp
+                    </Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="text-sm font-medium text-muted-foreground">
+                    Dograh
+                    {versionInfo && (
+                      <span className="ml-1 text-xs font-normal">v{versionInfo.ui}</span>
+                    )}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
             {isBehind && latestRelease && (
               <Tooltip>
                 <TooltipTrigger asChild>
