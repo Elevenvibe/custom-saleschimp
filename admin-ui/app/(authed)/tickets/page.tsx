@@ -436,7 +436,14 @@ function CreateTicketDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* See ComposeDialog (email page) for why we preventDefault on
+          the auto-focus events: Tiptap's contenteditable fights radix's
+          focus trap and the whole form goes dead. */}
+      <DialogContent
+        className="sm:max-w-2xl"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Create ticket</DialogTitle>
         </DialogHeader>

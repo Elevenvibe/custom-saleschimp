@@ -293,15 +293,14 @@ export default function EmailPage() {
           </div>
         </div>
         <div className="ml-auto">
+          {/* Always clickable — user reported the disabled state was
+              opaque ("compose can't be clicked"). The dialog now opens
+              regardless and surfaces a friendly inline warning if SMTP
+              isn't configured, so the user understands the gate. */}
           <Button
             size="sm"
             onClick={() => setShowCompose(true)}
-            disabled={!mailbox?.smtp_active}
-            title={
-              mailbox?.smtp_active
-                ? "Compose new message"
-                : "Configure SMTP under Settings → Email providers → SMTP"
-            }
+            title="Compose new message"
           >
             <PenSquare className="h-3.5 w-3.5" /> Compose
           </Button>
@@ -387,6 +386,7 @@ export default function EmailPage() {
 
       {showCompose && (
         <ComposeDialog
+          smtpActive={!!mailbox?.smtp_active}
           onClose={() => setShowCompose(false)}
           onSent={() => {
             setShowCompose(false);
@@ -593,7 +593,15 @@ function MailDetailPane({ id, onChanged }: { id: number; onChanged: () => void }
   );
 }
 
-function ComposeDialog({ onClose, onSent }: { onClose: () => void; onSent: () => void }) {
+function ComposeDialog({
+  onClose,
+  onSent,
+  smtpActive,
+}: {
+  onClose: () => void;
+  onSent: () => void;
+  smtpActive: boolean;
+}) {
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -624,10 +632,26 @@ function ComposeDialog({ onClose, onSent }: { onClose: () => void; onSent: () =>
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* onOpenAutoFocus prevented: radix Dialog defaults to focusing
+          the first focusable element (and re-asserting that focus on
+          interaction), which fights Tiptap's contenteditable and ends
+          up freezing the form — clicks into the inputs and the editor
+          stop registering. Disabling auto-focus + auto-restore lets
+          the user click into any field freely. */}
+      <DialogContent
+        className="sm:max-w-2xl"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>New message</DialogTitle>
         </DialogHeader>
+        {!smtpActive && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            SMTP isn&apos;t configured yet. You can draft the message, but Send will fail until you set credentials under{" "}
+            <span className="font-medium">Settings → Email providers → SMTP</span>.
+          </div>
+        )}
         <form onSubmit={submit} className="space-y-3">
           <div>
             <Label>To</Label>

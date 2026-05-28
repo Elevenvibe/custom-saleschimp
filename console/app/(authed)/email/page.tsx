@@ -240,13 +240,8 @@ export default function EmailPage() {
           <button
             type="button"
             onClick={() => setShowCompose(true)}
-            disabled={!mailbox?.smtp_active}
-            title={
-              mailbox?.smtp_active
-                ? "Compose new message"
-                : "Configure SMTP under Organization settings → Email integration → SMTP"
-            }
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+            title="Compose new message"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground"
           >
             <PenSquare className="h-3.5 w-3.5" /> Compose
           </button>
