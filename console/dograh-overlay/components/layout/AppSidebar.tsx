@@ -19,6 +19,7 @@ import {
   AudioLines,
   BarChart3, // [saleschimp-overlay] metrics icon
   Boxes, // [saleschimp-overlay] marketplace icon
+  ScrollText, // [saleschimp-overlay] logs icon
   Brain,
   ChevronLeft,
   ChevronRight,
@@ -162,6 +163,13 @@ const NAV_SECTIONS: SidebarNavSection[] = [
         title: "Metrics",
         url: "/console-bridge/observe/metrics",
         icon: BarChart3,
+      },
+      // [saleschimp-overlay] Tenant-side audit feed. Read-only; the
+      // gateway scopes results to the caller's tenant from JWT claims.
+      {
+        title: "Logs",
+        url: "/console-bridge/observe/logs",
+        icon: ScrollText,
       },
       {
         title: "Reports",

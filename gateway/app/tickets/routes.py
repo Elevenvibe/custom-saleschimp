@@ -258,12 +258,27 @@ async def list_all_tickets(
     session: Annotated[AsyncSession, Depends(get_session)],
     tenant_id: int | None = None,
     status_filter: Annotated[TicketStatus | None, Query(alias="status")] = None,
+    priority_filter: Annotated[TicketPriority | None, Query(alias="priority")] = None,
+    # Search across subject + creator email. Case-insensitive substring.
+    q: str | None = Query(None, min_length=1, max_length=200),
 ) -> list[TicketOut]:
+    from sqlalchemy import func as _func, or_
+
     stmt = select(SupportTicket)
     if tenant_id is not None:
         stmt = stmt.where(SupportTicket.tenant_id == tenant_id)
     if status_filter:
         stmt = stmt.where(SupportTicket.status == status_filter)
+    if priority_filter:
+        stmt = stmt.where(SupportTicket.priority == priority_filter)
+    if q:
+        like = f"%{q.lower()}%"
+        stmt = stmt.where(
+            or_(
+                _func.lower(SupportTicket.subject).like(like),
+                _func.lower(SupportTicket.created_by_email).like(like),
+            )
+        )
     rows = (
         await session.execute(stmt.order_by(desc(SupportTicket.updated_at)))
     ).scalars().all()

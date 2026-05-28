@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import {
   api,
   type AdminInvitesRes,
@@ -61,10 +61,14 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
-  // Single source of truth for the active tab so it survives reloads of
-  // the data fetchers but doesn't survive route changes (intentional —
-  // navigating away from a tenant should reset to Profile).
-  const [tab, setTab] = useState<string>("profile");
+  // Single source of truth for the active tab. Hydrates from the
+  // `?tab=` query string so deep links from the /tickets cross-tenant
+  // inbox (e.g. ?tab=tickets&ticket=42) land on the right tab.
+  const [tab, setTab] = useState<string>(() => {
+    if (typeof window === "undefined") return "overview";
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("tab") ?? "overview";
+  });
 
   function loadTenant() {
     api<TenantDetail>(`/api/admin/tenants/${id}`).then(setData).catch((e) => setError(e.message));
@@ -164,6 +168,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
     <>
       <PageHeader
         title={t.name}
+        parents={[{ label: "Tenants", url: "/tenants" }]}
         action={
           <div className="flex gap-2">
             <Link href={`/tenants/${t.id}/wallet`}>
@@ -211,7 +216,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
             (not a missing import). */}
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex flex-wrap">
-            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="metrics">Metrics</TabsTrigger>
             <TabsTrigger value="agents">Agents</TabsTrigger>
             <TabsTrigger value="phone">Phone numbers</TabsTrigger>
@@ -220,7 +225,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
             <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile" className="space-y-6">
+          <TabsContent value="overview" className="space-y-6">
             <section className="rounded-lg border bg-card p-5">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <Field label="Owner email" value={t.owner_email} />
@@ -392,10 +397,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
           </TabsContent>
 
           <TabsContent value="tickets">
-            <ComingSoon
-              title="Tickets"
-              note="Support tickets opened by this tenant's org admins. Status (open / in progress / resolved), priority, subject, last message. Backed by the new gateway /api/tenant/tickets surface (P3.4)."
-            />
+            <TicketsTab tenantId={t.id} />
           </TabsContent>
 
           <TabsContent value="logs">
@@ -530,6 +532,217 @@ function ProvidersTab({ tenantId }: { tenantId: number }) {
           it will save to `tenant_provider_overrides` keyed by (tenant_id,
           kind, provider) so a single tenant can opt out of the shared key.
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Per-tenant ticket inbox + thread. Two-way: super-admin replies show
+ *  up on the tenant-side /console/tickets page as author_kind='platform'
+ *  on the same ticket row, and tenant replies surface here. */
+function TicketsTab({ tenantId }: { tenantId: number }) {
+  type Ticket = {
+    id: number;
+    tenant_id: number;
+    subject: string;
+    status: "open" | "in_progress" | "resolved" | "closed";
+    priority: "low" | "normal" | "high" | "urgent";
+    created_by_email: string;
+    created_at: string;
+    updated_at: string;
+  };
+  type Msg = {
+    id: number;
+    author_kind: "tenant" | "platform";
+    author_email: string;
+    body: string;
+    created_at: string;
+  };
+
+  const [tickets, setTickets] = useState<Ticket[] | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [detail, setDetail] = useState<{ ticket: Ticket; messages: Msg[] } | null>(null);
+  const [reply, setReply] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reload = useCallback(() => {
+    setErr(null);
+    api<Ticket[]>(`/api/admin/tickets?tenant_id=${tenantId}`)
+      .then(setTickets)
+      .catch((e) => setErr((e as Error).message));
+  }, [tenantId]);
+  useEffect(reload, [reload]);
+
+  // If the page was opened with ?ticket=<id> (deep link from the cross-
+  // tenant /tickets inbox), auto-select that ticket.
+  useEffect(() => {
+    if (selected != null || typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const id = sp.get("ticket");
+    if (id) setSelected(Number(id));
+  }, [selected]);
+
+  const loadDetail = useCallback(
+    (id: number) => {
+      api<{ ticket: Ticket; messages: Msg[] }>(`/api/admin/tickets/${id}`)
+        .then(setDetail)
+        .catch((e) => setErr((e as Error).message));
+    },
+    [],
+  );
+  useEffect(() => {
+    if (selected != null) loadDetail(selected);
+    else setDetail(null);
+  }, [selected, loadDetail]);
+
+  async function sendReply() {
+    if (!detail || !reply.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/api/admin/tickets/${detail.ticket.id}/reply`, {
+        method: "POST",
+        body: JSON.stringify({ body: reply }),
+      });
+      setReply("");
+      loadDetail(detail.ticket.id);
+      reload();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setStatus(s: Ticket["status"]) {
+    if (!detail) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/api/admin/tickets/${detail.ticket.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: s }),
+      });
+      loadDetail(detail.ticket.id);
+      reload();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (err) {
+    return <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>;
+  }
+  if (!tickets) return <div className="text-sm text-muted-foreground">Loading…</div>;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4">
+      <div className="rounded-lg border bg-card overflow-hidden">
+        {tickets.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            No tickets from this tenant.
+          </div>
+        ) : (
+          <ul className="divide-y">
+            {tickets.map((t) => (
+              <li
+                key={t.id}
+                className={`px-3 py-2 cursor-pointer hover:bg-muted/30 ${
+                  selected === t.id ? "bg-muted/50" : ""
+                }`}
+                onClick={() => setSelected(t.id)}
+              >
+                <div className="text-sm font-medium truncate">{t.subject}</div>
+                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary">{t.status.replace("_", " ")}</Badge>
+                  <Badge variant={t.priority === "urgent" ? "destructive" : "secondary"}>
+                    {t.priority}
+                  </Badge>
+                  <span>{new Date(t.updated_at).toLocaleDateString()}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        {!detail ? (
+          <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+            Select a ticket on the left to view the thread.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium">{detail.ticket.subject}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Opened by {detail.ticket.created_by_email} ·{" "}
+                    {new Date(detail.ticket.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{detail.ticket.status.replace("_", " ")}</Badge>
+                  <Badge
+                    variant={detail.ticket.priority === "urgent" ? "destructive" : "secondary"}
+                  >
+                    {detail.ticket.priority}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {detail.messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`rounded-md border p-3 ${
+                    m.author_kind === "platform" ? "bg-blue-50 border-blue-200" : "bg-card"
+                  }`}
+                >
+                  <div className="text-xs text-muted-foreground">
+                    <strong>{m.author_email}</strong> · {new Date(m.created_at).toLocaleString()}
+                    {m.author_kind === "platform" && " · Platform"}
+                  </div>
+                  <div className="mt-1 text-sm whitespace-pre-wrap">{m.body}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-lg border bg-card p-3 space-y-2">
+              <textarea
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                rows={3}
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder="Reply as platform team…"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground">Status:</label>
+                  <select
+                    className="rounded-md border px-2 py-1 text-xs"
+                    value={detail.ticket.status}
+                    disabled={busy}
+                    onChange={(e) => setStatus(e.target.value as Ticket["status"])}
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+                <Button size="sm" disabled={busy || !reply.trim()} onClick={sendReply}>
+                  {busy ? "Sending…" : "Send reply"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -52,7 +52,7 @@ export default function TicketsPage() {
   useEffect(reload, [reload]);
 
   return (
-    <div className="p-8 space-y-6 max-w-5xl">
+    <div className="p-8 space-y-6 max-w-5xl mx-auto">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-xl font-semibold">Support tickets</h1>

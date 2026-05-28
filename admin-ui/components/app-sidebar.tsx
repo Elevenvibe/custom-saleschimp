@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import {
   LayoutDashboard,
+  LifeBuoy,
   Building2,
   Users,
   ScrollText,
@@ -33,6 +34,10 @@ import {
 const nav: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard /> },
   { title: "Tenants", url: "/tenants", icon: <Building2 /> },
+  // Cross-tenant ticket inbox. Sits next to Tenants so support staff
+  // can pivot between "this tenant" and "all tickets" without traversing
+  // a tenant detail page.
+  { title: "Tickets", url: "/tickets", icon: <LifeBuoy /> },
   { title: "Platform users", url: "/platform-users", icon: <Users /> },
   { title: "Invites", url: "/invites", icon: <Send /> },
   { title: "Audit log", url: "/audit", icon: <ScrollText /> },

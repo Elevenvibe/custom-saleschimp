@@ -1,19 +1,31 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   Breadcrumb,
   BreadcrumbItem,
+  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
+  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
+/** Breadcrumb crumb. label + url means it's a link; url omitted means
+ *  it's the terminal page (BreadcrumbPage). Pass the list ordered
+ *  root-to-current, e.g. [{label: "Tenants", url: "/tenants"}] for the
+ *  /tenants/[id] page, paired with title="Tenant: Acme". */
+export type Crumb = { label: string; url?: string };
+
 export function PageHeader({
   title,
+  parents,
   action,
 }: {
   title: string;
+  parents?: Crumb[];
   action?: React.ReactNode;
 }) {
   return (
@@ -23,6 +35,20 @@ export function PageHeader({
         <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-auto" />
         <Breadcrumb>
           <BreadcrumbList>
+            {parents?.map((c) => (
+              <span key={`${c.label}-${c.url ?? ""}`} className="flex items-center gap-1.5">
+                <BreadcrumbItem>
+                  {c.url ? (
+                    <BreadcrumbLink asChild>
+                      <Link href={c.url}>{c.label}</Link>
+                    </BreadcrumbLink>
+                  ) : (
+                    <span className="text-muted-foreground">{c.label}</span>
+                  )}
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+              </span>
+            ))}
             <BreadcrumbItem>
               <BreadcrumbPage>{title}</BreadcrumbPage>
             </BreadcrumbItem>
