@@ -74,10 +74,235 @@ export default function OrgSettingsPage() {
       <BrandingCard data={data} onSaved={load} />
       <ConcurrencyCard data={data} onSaved={load} />
       <PasswordCard />
+      <EmailIntegrationCard />
       <AddonsCard />
       <AutoFallbackCard data={data} onSaved={load} />
       <DangerZone data={data} />
     </div>
+  );
+}
+
+// ----- Email Integration (SMTP / IMAP) ------------------------------------
+//
+// One card with a tab-style toggle between SMTP (outbox) and IMAP (inbox)
+// — same backend (/api/tenant/mailbox) as the super-admin platform
+// mailbox; the only difference is the gateway derives scope='tenant' +
+// scope_id from the JWT so a tenant can't write another tenant's row.
+// Password field is intentionally empty on load; blank means "keep the
+// existing password" — same convention as the super-admin tabs.
+
+function EmailIntegrationCard() {
+  const [kind, setKind] = useState<"smtp" | "imap">("smtp");
+  return (
+    <section className="rounded-lg border bg-card p-6 space-y-4">
+      <div>
+        <h2 className="text-sm font-medium">Email integration</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Connect a mailbox so your tickets and messages can be pulled
+          and pushed via email. Not used for transactional notifications.
+        </p>
+      </div>
+      <div className="inline-flex rounded-md border p-0.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setKind("smtp")}
+          className={`rounded px-3 py-1 ${kind === "smtp" ? "bg-primary text-primary-foreground" : ""}`}
+        >
+          SMTP (outbox)
+        </button>
+        <button
+          type="button"
+          onClick={() => setKind("imap")}
+          className={`rounded px-3 py-1 ${kind === "imap" ? "bg-primary text-primary-foreground" : ""}`}
+        >
+          IMAP (inbox)
+        </button>
+      </div>
+      <TenantMailboxForm kind={kind} />
+    </section>
+  );
+}
+
+type TenantMailboxOut = {
+  smtp_active: boolean;
+  imap_active: boolean;
+  from_email: string | null;
+  from_name: string | null;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  imap_host: string | null;
+  imap_port: number | null;
+  imap_username: string | null;
+};
+
+function TenantMailboxForm({ kind }: { kind: "smtp" | "imap" }) {
+  const [mailbox, setMailbox] = useState<TenantMailboxOut | null>(null);
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState<number>(kind === "smtp" ? 587 : 993);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [secure, setSecure] = useState(true);
+  const [fromEmail, setFromEmail] = useState("");
+  const [fromName, setFromName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  function load() {
+    api<TenantMailboxOut>("/api/tenant/mailbox")
+      .then((m) => {
+        setMailbox(m);
+        if (kind === "smtp") {
+          setHost(m.smtp_host ?? "");
+          setPort(m.smtp_port ?? 587);
+          setUsername(m.smtp_username ?? "");
+        } else {
+          setHost(m.imap_host ?? "");
+          setPort(m.imap_port ?? 993);
+          setUsername(m.imap_username ?? "");
+        }
+        setFromEmail(m.from_email ?? "");
+        setFromName(m.from_name ?? "");
+      })
+      .catch(() => {});
+  }
+  useEffect(load, [kind]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setOk(null);
+    try {
+      const body: Record<string, unknown> = {
+        from_email: fromEmail || null,
+        from_name: fromName || null,
+      };
+      const block: Record<string, unknown> = { host, port, username };
+      if (password) block.password = password;
+      if (kind === "smtp") {
+        block.use_tls = secure;
+        if (password) body.smtp = block;
+        body.smtp_active = true;
+      } else {
+        block.use_ssl = secure;
+        if (password) body.imap = block;
+        body.imap_active = true;
+      }
+      const hasStored = kind === "smtp" ? Boolean(mailbox?.smtp_host) : Boolean(mailbox?.imap_host);
+      if (!password && !hasStored) {
+        throw new Error("Password is required to save new credentials.");
+      }
+      await api("/api/tenant/mailbox", { method: "PUT", body: JSON.stringify(body) });
+      setOk("Saved.");
+      setPassword("");
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const active = kind === "smtp" ? mailbox?.smtp_active : mailbox?.imap_active;
+
+  return (
+    <form onSubmit={save} className="space-y-3">
+      <div className="rounded-md border bg-muted/30 px-3 py-2 flex items-center justify-between text-xs">
+        <span>Status</span>
+        <Badge variant={active ? "default" : "secondary"}>
+          {active ? "active" : "not configured"}
+        </Badge>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="col-span-2">
+          <label className="text-xs uppercase tracking-wide text-muted-foreground">Host</label>
+          <input
+            className="mt-0.5 w-full rounded-md border px-3 py-2"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder={kind === "smtp" ? "smtp.example.com" : "imap.example.com"}
+            required
+          />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wide text-muted-foreground">Port</label>
+          <input
+            type="number"
+            className="mt-0.5 w-full rounded-md border px-3 py-2"
+            value={port}
+            onChange={(e) => setPort(Number(e.target.value))}
+            required
+          />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wide text-muted-foreground">
+            {kind === "smtp" ? "Use TLS" : "Use SSL"}
+          </label>
+          <select
+            className="mt-0.5 w-full rounded-md border bg-background px-3 py-2"
+            value={secure ? "true" : "false"}
+            onChange={(e) => setSecure(e.target.value === "true")}
+          >
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs uppercase tracking-wide text-muted-foreground">Username</label>
+          <input
+            className="mt-0.5 w-full rounded-md border px-3 py-2"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs uppercase tracking-wide text-muted-foreground">
+            Password {(kind === "smtp" ? mailbox?.smtp_host : mailbox?.imap_host) && <span>(leave blank to keep current)</span>}
+          </label>
+          <input
+            type="password"
+            className="mt-0.5 w-full rounded-md border px-3 py-2"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wide text-muted-foreground">From email</label>
+          <input
+            type="email"
+            className="mt-0.5 w-full rounded-md border px-3 py-2"
+            value={fromEmail}
+            onChange={(e) => setFromEmail(e.target.value)}
+            placeholder="support@yourdomain.com"
+          />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wide text-muted-foreground">From name</label>
+          <input
+            className="mt-0.5 w-full rounded-md border px-3 py-2"
+            value={fromName}
+            onChange={(e) => setFromName(e.target.value)}
+          />
+        </div>
+      </div>
+      {error && (
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
+      )}
+      {ok && (
+        <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{ok}</div>
+      )}
+      <button
+        type="submit"
+        disabled={busy}
+        className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+      >
+        {busy ? "Saving…" : "Save"}
+      </button>
+    </form>
   );
 }
 

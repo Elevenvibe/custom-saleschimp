@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import {
   LayoutDashboard,
-  LifeBuoy,
+  MessagesSquare,
   Building2,
   Users,
   ScrollText,
@@ -34,10 +34,19 @@ import {
 const nav: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard /> },
   { title: "Tenants", url: "/tenants", icon: <Building2 /> },
-  // Cross-tenant ticket inbox. Sits next to Tenants so support staff
-  // can pivot between "this tenant" and "all tickets" without traversing
-  // a tenant detail page.
-  { title: "Tickets", url: "/tickets", icon: <LifeBuoy /> },
+  // Communication group — Email (IMAP/SMTP bound to the platform mailbox)
+  // + Tickets (in-product cross-tenant inbox). The user asked for a
+  // dropdown rather than two flat entries so the two related surfaces
+  // share a single sidebar slot. Nested rendering lives in NavMain.
+  {
+    title: "Communication",
+    url: "/communication",
+    icon: <MessagesSquare />,
+    children: [
+      { title: "Email", url: "/email" },
+      { title: "Tickets", url: "/tickets" },
+    ],
+  },
   { title: "Platform users", url: "/platform-users", icon: <Users /> },
   { title: "Invites", url: "/invites", icon: <Send /> },
   { title: "Audit log", url: "/audit", icon: <ScrollText /> },

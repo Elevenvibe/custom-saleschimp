@@ -1,26 +1,42 @@
 "use client";
 
 /**
- * /tickets — super-admin cross-tenant ticket inbox.
+ * /tickets — super-admin cross-tenant ticket inbox (Gmail-style).
  *
- * Companion to the per-tenant Tickets tab on /tenants/[id]/page.tsx:
- * this view is "all tickets across all tenants" so support staff can
- * triage by status / priority / tenant without traversing a tenant
- * detail page first.
+ * Two-pane layout inspired by shadcn's sidebar-09 (mail) example:
  *
- * The shadcn sidebar-09 layout the user asked for is queued for a
- * follow-up — installing CLI components inside the docker build
- * pipeline is a separate slice. Today this uses the same AppShell as
- * every other admin page; the sidebar entry is already in place so the
- * link lights up.
+ *   ┌──────── left inner sidebar ────────┐  ┌──── right detail pane ─────┐
+ *   │ ▣ Filters (status / priority / q)  │  │ Subject                    │
+ *   │ ────────────────────────────────── │  │ tenant · created_by ·      │
+ *   │ Preamble cards                     │  │  status · priority · updt  │
+ *   │   ┌────────────────────────────┐   │  │ ────────────────────────── │
+ *   │   │ TenantName       12:04 PM  │   │  │ thread messages            │
+ *   │   │ Re: Inbound webhook 502    │   │  │ reply box                  │
+ *   │   │ • unread dot               │   │  │                            │
+ *   │   └────────────────────────────┘   │  │                            │
+ *   └────────────────────────────────────┘  └────────────────────────────┘
+ *
+ * Backend already supports the filter contract (status / priority /
+ * tenant_id / q) from the previous slice; we just consume it. Opening
+ * a ticket fires GET /api/admin/tickets/{id} which marks read_at server-
+ * side, so the unread dot disappears on next list refresh.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 
 import { api, type Tenant } from "@/lib/api";
-import { PageDescription, PageHeader } from "@/components/PageHeader";
+import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Mail, Search } from "lucide-react";
 
 type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 type TicketPriority = "low" | "normal" | "high" | "urgent";
@@ -34,235 +50,441 @@ type Ticket = {
   created_by_email: string;
   created_at: string;
   updated_at: string;
+  unread?: boolean;
 };
 
-const STATUS_OPTIONS: Array<{ value: TicketStatus | ""; label: string }> = [
-  { value: "", label: "All statuses" },
-  { value: "open", label: "Open" },
-  { value: "in_progress", label: "In progress" },
-  { value: "resolved", label: "Resolved" },
-  { value: "closed", label: "Closed" },
-];
+type TicketMessage = {
+  id: number;
+  ticket_id: number;
+  author_kind: "tenant" | "platform";
+  author_email: string;
+  body: string;
+  created_at: string;
+};
 
-const PRIORITY_OPTIONS: Array<{ value: TicketPriority | ""; label: string }> = [
-  { value: "", label: "All priorities" },
-  { value: "low", label: "Low" },
-  { value: "normal", label: "Normal" },
-  { value: "high", label: "High" },
-  { value: "urgent", label: "Urgent" },
-];
+type TicketDetail = { ticket: Ticket; messages: TicketMessage[] };
 
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenants, setTenants] = useState<Map<number, Tenant>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Filter state
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<TicketStatus | "">("");
-  const [priority, setPriority] = useState<TicketPriority | "">("");
-  const [tenantId, setTenantId] = useState<string>("");
+  const [status, setStatus] = useState<TicketStatus | "all">("all");
+  const [priority, setPriority] = useState<TicketPriority | "all">("all");
+  const [tenantId, setTenantId] = useState<string>("all");
 
-  // Debounce the search input so typing doesn't fire a request per keystroke.
+  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setQ(qInput.trim()), 300);
     return () => clearTimeout(t);
   }, [qInput]);
 
-  // Tenants for the filter dropdown — small list so we just fetch all of
-  // them once instead of building a typeahead.
+  // Tenants index for showing tenant names in preamble cards.
   useEffect(() => {
-    api<{ items: Tenant[] }>("/api/admin/tenants?limit=200")
-      .then((r) => setTenants(r.items))
+    api<{ items: Tenant[] }>("/api/admin/tenants?limit=500")
+      .then((r) => {
+        const m = new Map<number, Tenant>();
+        for (const t of r.items) m.set(t.id, t);
+        setTenants(m);
+      })
       .catch(() => {});
   }, []);
 
   const qs = useMemo(() => {
     const sp = new URLSearchParams();
     if (q) sp.set("q", q);
-    if (status) sp.set("status", status);
-    if (priority) sp.set("priority", priority);
-    if (tenantId) sp.set("tenant_id", tenantId);
-    const s = sp.toString();
-    return s ? `?${s}` : "";
+    if (status !== "all") sp.set("status", status);
+    if (priority !== "all") sp.set("priority", priority);
+    if (tenantId !== "all") sp.set("tenant_id", tenantId);
+    return sp.toString();
   }, [q, status, priority, tenantId]);
 
   const reload = useCallback(() => {
     setError(null);
-    api<Ticket[]>(`/api/admin/tickets${qs}`)
+    api<Ticket[]>(`/api/admin/tickets${qs ? "?" + qs : ""}`)
       .then(setTickets)
       .catch((e) => setError((e as Error).message));
   }, [qs]);
   useEffect(reload, [reload]);
 
-  const tenantNameById = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const t of tenants) m.set(t.id, t.name);
-    return m;
-  }, [tenants]);
+  // Deep-link via ?ticket=<id> — handy when the per-tenant page links here.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const t = sp.get("ticket");
+    if (t) setSelectedId(Number(t));
+  }, []);
 
-  const hasFilters = q !== "" || status !== "" || priority !== "" || tenantId !== "";
-  function clearAll() {
-    setQInput("");
-    setQ("");
-    setStatus("");
-    setPriority("");
-    setTenantId("");
-  }
+  const unreadCount = (tickets ?? []).filter((t) => t.unread).length;
 
   return (
     <>
-      <PageHeader title="Tickets" />
-      <div className="p-8 space-y-4">
-        <PageDescription>
-          All support tickets across all tenants. Click a row to open the
-          thread.
-        </PageDescription>
-
-        <div className="card card-pad">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[220px]">
-              <label className="label">Search</label>
-              <input
-                className="input"
-                placeholder="Subject or creator email…"
+      <PageHeader
+        title="Tickets"
+        parents={[{ label: "Communication" }]}
+      />
+      <div className="flex h-[calc(100vh-3.5rem)]">
+        {/* Left inner sidebar: filters + preamble cards */}
+        <div className="w-[360px] shrink-0 border-r flex flex-col bg-muted/20">
+          <div className="border-b p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">Inbox</div>
+              {unreadCount > 0 && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {unreadCount} unread
+                </Badge>
+              )}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search subject…"
+                className="h-8 pl-7 text-xs"
                 value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
               />
             </div>
-            <div className="min-w-[160px]">
-              <label className="label">Tenant</label>
-              <select
-                className="input"
-                value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
-              >
-                <option value="">All tenants</option>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-[160px]">
-              <label className="label">Status</label>
-              <select
-                className="input"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as TicketStatus | "")}
-              >
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-[160px]">
-              <label className="label">Priority</label>
-              <select
-                className="input"
+            <div className="grid grid-cols-2 gap-2">
+              <Select value={status} onValueChange={(v) => setStatus(v as TicketStatus | "all")}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All status</SelectItem>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="in_progress">In progress</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as TicketPriority | "")}
+                onValueChange={(v) => setPriority(v as TicketPriority | "all")}
               >
-                {PRIORITY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All priority</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            {hasFilters && (
-              <button type="button" className="btn-secondary" onClick={clearAll}>
-                Clear
-              </button>
+            <Select value={tenantId} onValueChange={setTenantId}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tenants</SelectItem>
+                {Array.from(tenants.values()).map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Preamble list */}
+          <div className="flex-1 overflow-y-auto">
+            {!tickets ? (
+              <div className="p-4 text-xs text-muted-foreground">Loading…</div>
+            ) : tickets.length === 0 ? (
+              <div className="p-4 text-xs text-muted-foreground">
+                No tickets match this filter.
+              </div>
+            ) : (
+              tickets.map((t) => (
+                <PreambleCard
+                  key={t.id}
+                  ticket={t}
+                  tenantName={tenants.get(t.tenant_id)?.name ?? `Tenant #${t.tenant_id}`}
+                  active={selectedId === t.id}
+                  onClick={() => setSelectedId(t.id)}
+                />
+              ))
             )}
           </div>
-          {tickets && (
-            <div className="mt-3 text-xs text-muted-foreground">
-              {tickets.length === 0
-                ? "No tickets match the current filters"
-                : `${tickets.length} ${tickets.length === 1 ? "ticket" : "tickets"}`}
-            </div>
+        </div>
+
+        {/* Right pane: detail + thread */}
+        <div className="flex-1 overflow-y-auto">
+          {selectedId == null ? (
+            <EmptyDetail />
+          ) : (
+            <TicketDetailPane
+              ticketId={selectedId}
+              tenantName={
+                tickets?.find((t) => t.id === selectedId)
+                  ? tenants.get(tickets!.find((t) => t.id === selectedId)!.tenant_id)?.name
+                  : undefined
+              }
+              onChanged={reload}
+            />
           )}
         </div>
-
-        {error && (
-          <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
-        )}
-
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-2">Subject</th>
-                <th className="px-4 py-2">Tenant</th>
-                <th className="px-4 py-2">Created by</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Priority</th>
-                <th className="px-4 py-2">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!tickets && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                    Loading…
-                  </td>
-                </tr>
-              )}
-              {tickets?.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                    No tickets.
-                  </td>
-                </tr>
-              )}
-              {tickets?.map((t) => (
-                <tr key={t.id} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="px-4 py-2">
-                    <Link
-                      href={`/tenants/${t.tenant_id}?tab=tickets&ticket=${t.id}`}
-                      className="text-brand-600 hover:underline"
-                    >
-                      {t.subject}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2">
-                    <Link
-                      href={`/tenants/${t.tenant_id}`}
-                      className="text-slate-700 hover:underline"
-                    >
-                      {tenantNameById.get(t.tenant_id) ?? `#${t.tenant_id}`}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">{t.created_by_email}</td>
-                  <td className="px-4 py-2">
-                    <Badge variant={statusVariant(t.status)}>{t.status.replace("_", " ")}</Badge>
-                  </td>
-                  <td className="px-4 py-2">
-                    <Badge variant={priorityVariant(t.priority)}>{t.priority}</Badge>
-                  </td>
-                  <td className="px-4 py-2 text-slate-500">
-                    {new Date(t.updated_at).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
+
+      {error && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive shadow">
+          {error}
+        </div>
+      )}
     </>
   );
 }
 
-function statusVariant(s: TicketStatus): "default" | "secondary" | "destructive" {
-  if (s === "open") return "default";
-  if (s === "closed") return "secondary";
-  return "secondary";
+function PreambleCard({
+  ticket,
+  tenantName,
+  active,
+  onClick,
+}: {
+  ticket: Ticket;
+  tenantName: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  // Format: tenant top-left, time top-right, subject below — matches the
+  // user's spec (gmail/outlook style). Unread = bold + dot.
+  const t = new Date(ticket.updated_at);
+  const isToday = new Date().toDateString() === t.toDateString();
+  const timeStr = isToday
+    ? t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : t.toLocaleDateString();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full border-b px-3 py-2 text-left text-xs transition hover:bg-muted/40 ${
+        active ? "bg-primary/5" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div
+          className={`truncate ${
+            ticket.unread ? "font-semibold text-foreground" : "text-muted-foreground"
+          }`}
+        >
+          {tenantName}
+        </div>
+        <div className="text-[10px] text-muted-foreground shrink-0">{timeStr}</div>
+      </div>
+      <div className="mt-0.5 flex items-center gap-2">
+        {ticket.unread && (
+          <span
+            className="inline-block size-1.5 rounded-full bg-blue-500"
+            aria-label="unread"
+          />
+        )}
+        <div
+          className={`truncate text-sm ${
+            ticket.unread ? "font-semibold text-foreground" : "text-foreground/80"
+          }`}
+        >
+          {ticket.subject}
+        </div>
+      </div>
+    </button>
+  );
 }
-function priorityVariant(p: TicketPriority): "default" | "secondary" | "destructive" {
-  if (p === "urgent") return "destructive";
-  if (p === "high") return "default";
-  return "secondary";
+
+function EmptyDetail() {
+  return (
+    <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
+      <div className="text-center max-w-md">
+        <Mail className="mx-auto h-10 w-10 opacity-30" />
+        <div className="mt-3">Select a ticket from the inbox to read.</div>
+      </div>
+    </div>
+  );
+}
+
+function TicketDetailPane({
+  ticketId,
+  tenantName,
+  onChanged,
+}: {
+  ticketId: number;
+  tenantName?: string;
+  onChanged: () => void;
+}) {
+  const [detail, setDetail] = useState<TicketDetail | null>(null);
+  const [reply, setReply] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api<TicketDetail>(`/api/admin/tickets/${ticketId}`)
+      .then((d) => {
+        setDetail(d);
+        // List shows unread state — refresh once the detail is loaded so
+        // the read_at write that happens server-side propagates back.
+        onChanged();
+      })
+      .catch((e) => setError((e as Error).message));
+  }, [ticketId, onChanged]);
+  useEffect(load, [load]);
+
+  async function submitReply(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/tickets/${ticketId}/reply`, {
+        method: "POST",
+        body: JSON.stringify({ body: reply }),
+      });
+      setReply("");
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setStatus(next: TicketStatus) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/tickets/${ticketId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: next }),
+      });
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!detail) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
+  const { ticket, messages } = detail;
+  const closed = ticket.status === "closed";
+
+  return (
+    <div className="p-6 space-y-5">
+      {/* Subject + meta block */}
+      <div className="border-b pb-4">
+        <h2 className="text-xl font-semibold">{ticket.subject}</h2>
+        <div className="mt-3 grid grid-cols-2 gap-y-2 gap-x-6 text-xs text-muted-foreground sm:grid-cols-3">
+          <Meta label="Tenant" value={tenantName ?? `#${ticket.tenant_id}`} />
+          <Meta label="Created by" value={ticket.created_by_email} />
+          <Meta label="Status" value={<StatusBadge status={ticket.status} />} />
+          <Meta label="Priority" value={<PriorityBadge priority={ticket.priority} />} />
+          <Meta label="Updated" value={new Date(ticket.updated_at).toLocaleString()} />
+          <Meta label="Created" value={new Date(ticket.created_at).toLocaleString()} />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1">
+          {(["open", "in_progress", "resolved", "closed"] as TicketStatus[]).map((s) => (
+            <Button
+              key={s}
+              size="sm"
+              variant={ticket.status === s ? "default" : "outline"}
+              disabled={busy || ticket.status === s}
+              onClick={() => setStatus(s)}
+            >
+              {s.replace("_", " ")}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Thread */}
+      <div className="space-y-3">
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            className={`rounded-md border p-3 ${
+              m.author_kind === "platform" ? "bg-blue-50 border-blue-200" : "bg-card"
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div>
+                <strong>{m.author_email}</strong>
+                {m.author_kind === "platform" && " · Platform"}
+              </div>
+              <div>{new Date(m.created_at).toLocaleString()}</div>
+            </div>
+            <div className="mt-2 text-sm whitespace-pre-wrap">{m.body}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Reply */}
+      {closed ? (
+        <div className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          This ticket is closed. Re-open it to reply.
+        </div>
+      ) : (
+        <form onSubmit={submitReply} className="space-y-2">
+          <textarea
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            rows={4}
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            placeholder="Reply to the tenant…"
+            required
+          />
+          {error && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button type="submit" disabled={busy || !reply.trim()} size="sm">
+              {busy ? "Sending…" : "Send reply"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide">{label}</div>
+      <div className="mt-0.5 text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: TicketStatus }) {
+  const variant: Record<TicketStatus, "default" | "secondary" | "destructive" | "outline"> = {
+    open: "secondary",
+    in_progress: "default",
+    resolved: "outline",
+    closed: "outline",
+  };
+  return (
+    <Badge variant={variant[status]} className="text-[10px]">
+      {status.replace("_", " ")}
+    </Badge>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: TicketPriority }) {
+  const cls =
+    priority === "urgent"
+      ? "bg-red-100 text-red-800"
+      : priority === "high"
+        ? "bg-orange-100 text-orange-800"
+        : priority === "low"
+          ? "bg-slate-100 text-slate-600"
+          : "bg-muted text-muted-foreground";
+  return (
+    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] ${cls}`}>
+      {priority}
+    </span>
+  );
 }

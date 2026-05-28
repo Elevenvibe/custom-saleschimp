@@ -41,6 +41,13 @@ class SupportTicket(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Platform-side read marker. Unread iff read_at IS NULL OR
+    # read_at < updated_at (i.e. tenant has sent a new message since we
+    # last opened the thread). Nullable so existing rows pre-0015
+    # default to unread.
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class SupportTicketMessage(Base):

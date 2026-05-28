@@ -48,6 +48,10 @@ class TicketOut(BaseModel):
     created_by_email: str
     created_at: str
     updated_at: str
+    # True iff the platform has never opened the ticket OR a tenant
+    # reply has come in since the last open. Powers the unread badge
+    # on the Gmail-style ticket list.
+    unread: bool = False
 
 
 class TicketMessageOut(BaseModel):
@@ -79,6 +83,7 @@ class TicketStatusIn(BaseModel):
 
 
 def _serialize_ticket(t: SupportTicket) -> TicketOut:
+    unread = t.read_at is None or t.read_at < t.updated_at
     return TicketOut(
         id=t.id,
         tenant_id=t.tenant_id,
@@ -88,6 +93,7 @@ def _serialize_ticket(t: SupportTicket) -> TicketOut:
         created_by_email=t.created_by_email,
         created_at=t.created_at.isoformat(),
         updated_at=t.updated_at.isoformat(),
+        unread=unread,
     )
 
 
@@ -296,6 +302,11 @@ async def admin_get_ticket(
     ).scalar_one_or_none()
     if ticket is None:
         raise HTTPException(404, "ticket not found")
+    # Mark as read by the platform side every time the detail is fetched.
+    # Putting it here (vs a separate POST /read) keeps the read marker
+    # in step with what the super-admin has actually viewed, no client
+    # bookkeeping needed.
+    ticket.read_at = datetime.utcnow()
     msgs = (
         await session.execute(
             select(SupportTicketMessage)
@@ -303,10 +314,12 @@ async def admin_get_ticket(
             .order_by(SupportTicketMessage.created_at)
         )
     ).scalars().all()
-    return TicketDetailOut(
+    out = TicketDetailOut(
         ticket=_serialize_ticket(ticket),
         messages=[_serialize_message(m) for m in msgs],
     )
+    await session.commit()
+    return out
 
 
 @admin_router.post(
