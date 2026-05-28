@@ -17,7 +17,7 @@ the customer types where it makes sense.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,6 +31,19 @@ from app.customer_auth.deps import require_customer
 from app.db import get_session
 from app.tenants.models import TenantMember
 from app.tickets.models import SupportTicket, SupportTicketMessage
+
+
+def _now() -> datetime:
+    """Timezone-aware UTC now.
+
+    The ticket columns are DateTime(timezone=True). Feeding a naive
+    datetime.utcnow() back makes the in-memory row's read_at offset-
+    naive while updated_at (loaded from postgres) stays offset-aware,
+    and the `read_at < updated_at` comparison in _serialize_ticket
+    raises TypeError → 500 on every detail fetch. The fix is to keep
+    every datetime we *write* aware too.
+    """
+    return datetime.now(timezone.utc)
 
 
 # ---- Pydantic shapes ---------------------------------------------------
@@ -247,7 +260,7 @@ async def tenant_reply(
     # customer comes back with a follow-up.
     if ticket.status == "resolved":
         ticket.status = "open"
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = _now()
     await session.flush()
     await session.commit()
     return _serialize_message(msg)
@@ -306,7 +319,7 @@ async def admin_get_ticket(
     # Putting it here (vs a separate POST /read) keeps the read marker
     # in step with what the super-admin has actually viewed, no client
     # bookkeeping needed.
-    ticket.read_at = datetime.utcnow()
+    ticket.read_at = _now()
     msgs = (
         await session.execute(
             select(SupportTicketMessage)
@@ -348,7 +361,7 @@ async def admin_reply(
     # status column reflects "we've seen this".
     if ticket.status == "open":
         ticket.status = "in_progress"
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = _now()
     await session.flush()
     await session.commit()
     return _serialize_message(msg)
@@ -367,7 +380,7 @@ async def admin_set_status(
     if ticket is None:
         raise HTTPException(404, "ticket not found")
     ticket.status = body.status
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = _now()
     await record_audit(
         session,
         actor_kind="platform",

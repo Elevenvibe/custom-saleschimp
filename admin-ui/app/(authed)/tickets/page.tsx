@@ -22,7 +22,7 @@
  * side, so the unread dot disappears on next list refresh.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, type Tenant } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
@@ -127,11 +127,14 @@ export default function TicketsPage() {
         parents={[{ label: "Communication" }]}
       />
       <div className="flex h-[calc(100vh-3.5rem)]">
-        {/* Left inner sidebar: filters + preamble cards */}
-        <div className="w-[360px] shrink-0 border-r flex flex-col bg-muted/20">
-          <div className="border-b p-3 space-y-2">
+        {/* Left inner sidebar: filters + preamble cards. Filters stack
+            consistently on a single column with uniform height so they
+            don't go "weave-y" between the search row, the status/priority
+            grid, and the tenant picker. */}
+        <div className="w-[380px] shrink-0 border-r flex flex-col bg-muted/20">
+          <div className="border-b p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">Inbox</div>
+              <div className="text-sm font-semibold">Inbox</div>
               {unreadCount > 0 && (
                 <Badge variant="secondary" className="text-[10px]">
                   {unreadCount} unread
@@ -139,18 +142,18 @@ export default function TicketsPage() {
               )}
             </div>
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder="Search subject…"
-                className="h-8 pl-7 text-xs"
+                className="h-9 pl-8 text-xs"
                 value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Select value={status} onValueChange={(v) => setStatus(v as TicketStatus | "all")}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
+                <SelectTrigger className="h-9 text-xs w-full">
+                  <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All status</SelectItem>
@@ -164,8 +167,8 @@ export default function TicketsPage() {
                 value={priority}
                 onValueChange={(v) => setPriority(v as TicketPriority | "all")}
               >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
+                <SelectTrigger className="h-9 text-xs w-full">
+                  <SelectValue placeholder="Priority" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All priority</SelectItem>
@@ -177,8 +180,8 @@ export default function TicketsPage() {
               </Select>
             </div>
             <Select value={tenantId} onValueChange={setTenantId}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
+              <SelectTrigger className="h-9 text-xs w-full">
+                <SelectValue placeholder="Tenant" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All tenants</SelectItem>
@@ -320,16 +323,24 @@ function TicketDetailPane({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // load() depends only on ticketId. We deliberately do NOT include
+  // onChanged in the useCallback deps — its identity changes whenever
+  // the parent re-fetches the list, which would re-fire load() in a
+  // loop. Reading the latest onChanged via a ref keeps the call fresh
+  // without re-triggering the effect.
+  const onChangedRef = useRef(onChanged);
+  useEffect(() => {
+    onChangedRef.current = onChanged;
+  }, [onChanged]);
   const load = useCallback(() => {
+    setError(null);
     api<TicketDetail>(`/api/admin/tickets/${ticketId}`)
       .then((d) => {
         setDetail(d);
-        // List shows unread state — refresh once the detail is loaded so
-        // the read_at write that happens server-side propagates back.
-        onChanged();
+        onChangedRef.current();
       })
       .catch((e) => setError((e as Error).message));
-  }, [ticketId, onChanged]);
+  }, [ticketId]);
   useEffect(load, [load]);
 
   async function submitReply(e: React.FormEvent) {
@@ -366,6 +377,17 @@ function TicketDetailPane({
     }
   }
 
+  // Error first — otherwise a 500 (e.g. naive-vs-aware datetime crash)
+  // hides behind "Loading…" forever. User won't know what went wrong.
+  if (error && !detail) {
+    return (
+      <div className="p-8">
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          Failed to load ticket #{ticketId}: {error}
+        </div>
+      </div>
+    );
+  }
   if (!detail) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
   const { ticket, messages } = detail;
   const closed = ticket.status === "closed";
