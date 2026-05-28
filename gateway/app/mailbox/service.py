@@ -224,6 +224,7 @@ async def fetch_one(session: AsyncSession, mailbox: MailboxConfig) -> dict[str, 
                     subject=subject[:500],
                     body_text=body,
                     received_at=received_at,
+                    folder="INBOX",
                 )
                 session.add(row)
                 try:
@@ -328,6 +329,7 @@ async def send_one(
         body_text=body,
         received_at=datetime.now(timezone.utc),
         read_at=datetime.now(timezone.utc),  # we authored it; mark read
+        folder="SENT",
     )
     session.add(row)
     await session.flush()

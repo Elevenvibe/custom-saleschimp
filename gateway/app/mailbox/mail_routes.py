@@ -40,6 +40,7 @@ def _now() -> datetime:
 class MailMessageOut(BaseModel):
     id: int
     direction: Literal["inbound", "outbound"]
+    folder: str
     from_email: str
     from_name: str | None
     to_emails: list[str]
@@ -63,6 +64,7 @@ def _serialize(m: MailMessage) -> MailMessageOut:
     return MailMessageOut(
         id=m.id,
         direction=m.direction,  # type: ignore[arg-type]
+        folder=m.folder or ("SENT" if m.direction == "outbound" else "INBOX"),
         from_email=m.from_email,
         from_name=m.from_name,
         to_emails=m.to_emails or [],
@@ -99,6 +101,7 @@ async def _list_messages(
     scope_kind: Literal["platform", "tenant"],
     scope_id: int | None,
     limit: int,
+    folder: str | None = None,
 ) -> list[MailMessageOut]:
     stmt = (
         select(MailMessage)
@@ -106,6 +109,18 @@ async def _list_messages(
         .order_by(desc(MailMessage.received_at))
         .limit(limit)
     )
+    if folder:
+        # 'SENT' is direction-derived for outbound rows but explicit-
+        # column for the future when we mirror IMAP folders properly.
+        # Match either path so callers don't need to know the storage
+        # quirk.
+        if folder.upper() == "SENT":
+            stmt = stmt.where(MailMessage.direction == "outbound")
+        else:
+            stmt = stmt.where(
+                MailMessage.folder == folder,
+                MailMessage.direction == "inbound",
+            )
     rows = (await session.execute(stmt)).scalars().all()
     return [_serialize(m) for m in rows]
 
@@ -143,8 +158,9 @@ async def admin_list_mail(
     _claims: Annotated[dict, Depends(require_super_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = Query(100, ge=1, le=500),
+    folder: str | None = Query(None, description="Filter by folder: INBOX / SENT / SPAM / UPDATES"),
 ) -> list[MailMessageOut]:
-    return await _list_messages(session, "platform", None, limit)
+    return await _list_messages(session, "platform", None, limit, folder)
 
 
 @admin_router.get("/{msg_id}", response_model=MailMessageOut)
@@ -201,9 +217,10 @@ async def tenant_list_mail(
     claims: Annotated[dict, Depends(require_org_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = Query(100, ge=1, le=500),
+    folder: str | None = Query(None, description="Filter by folder: INBOX / SENT / SPAM / UPDATES"),
 ) -> list[MailMessageOut]:
     tenant_id = await _tenant_scope_id(session, claims)
-    return await _list_messages(session, "tenant", tenant_id, limit)
+    return await _list_messages(session, "tenant", tenant_id, limit, folder)
 
 
 @tenant_router.get("/{msg_id}", response_model=MailMessageOut)

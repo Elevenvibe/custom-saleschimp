@@ -37,6 +37,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Mail, Search } from "lucide-react";
+import { RichEditor } from "@/components/RichEditor";
+import { HtmlBody } from "@/components/HtmlBody";
 
 type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 type TicketPriority = "low" | "normal" | "high" | "urgent";
@@ -436,7 +438,9 @@ function TicketDetailPane({
               </div>
               <div>{new Date(m.created_at).toLocaleString()}</div>
             </div>
-            <div className="mt-2 text-sm whitespace-pre-wrap">{m.body}</div>
+            <div className="mt-2">
+              <HtmlBody html={m.body} className="text-sm" />
+            </div>
           </div>
         ))}
       </div>
@@ -448,13 +452,11 @@ function TicketDetailPane({
         </div>
       ) : (
         <form onSubmit={submitReply} className="space-y-2">
-          <textarea
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            rows={4}
+          <RichEditor
             value={reply}
-            onChange={(e) => setReply(e.target.value)}
+            onChange={setReply}
             placeholder="Reply to the tenant…"
-            required
+            minHeight={140}
           />
           {error && (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">

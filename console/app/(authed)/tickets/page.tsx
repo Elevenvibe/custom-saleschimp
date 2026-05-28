@@ -17,6 +17,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { Inbox, Search } from "lucide-react";
+import { RichEditor } from "@/components/RichEditor";
+import { HtmlBody } from "@/components/HtmlBody";
 
 type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 type TicketPriority = "low" | "normal" | "high" | "urgent";
@@ -279,7 +281,9 @@ function TicketDetailPane({
               </div>
               <div>{new Date(m.created_at).toLocaleString()}</div>
             </div>
-            <div className="mt-2 text-sm whitespace-pre-wrap">{m.body}</div>
+            <div className="mt-2">
+              <HtmlBody html={m.body} className="text-sm" />
+            </div>
           </div>
         ))}
       </div>
@@ -290,13 +294,11 @@ function TicketDetailPane({
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-2">
-          <textarea
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            rows={4}
+          <RichEditor
             value={reply}
-            onChange={(e) => setReply(e.target.value)}
+            onChange={setReply}
             placeholder="Write a reply…"
-            required
+            minHeight={140}
           />
           {error && (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -384,13 +386,14 @@ function NewTicketDialog({ onClose, onCreated }: { onClose: () => void; onCreate
         </div>
         <div>
           <label className="text-xs uppercase tracking-wide text-muted-foreground">Description</label>
-          <textarea
-            className="mt-0.5 w-full rounded-md border px-3 py-2 text-sm"
-            rows={6}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            required
-          />
+          <div className="mt-0.5">
+            <RichEditor
+              value={body}
+              onChange={setBody}
+              placeholder="Steps to reproduce, what you expected, what happened…"
+              minHeight={180}
+            />
+          </div>
         </div>
         {error && (
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
@@ -405,7 +408,7 @@ function NewTicketDialog({ onClose, onCreated }: { onClose: () => void; onCreate
           </button>
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || !body.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
           >
             {busy ? "Creating…" : "Open ticket"}

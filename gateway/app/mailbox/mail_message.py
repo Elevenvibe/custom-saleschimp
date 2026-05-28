@@ -43,6 +43,9 @@ class MailMessage(Base):
     subject: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     body_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # IMAP folder this row came from (or 'SENT' for outbound). Lets the
+    # Email page filter the list pane by Inbox / Sent / Spam / Updates.
+    folder: Mapped[str] = mapped_column(String(64), nullable=False, default="INBOX")
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
