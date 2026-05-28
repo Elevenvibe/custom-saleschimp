@@ -36,7 +36,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Mail, Search } from "lucide-react";
+import { Filter, Mail, Plus, Search } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { RichEditor } from "@/components/RichEditor";
 import { HtmlBody } from "@/components/HtmlBody";
 
@@ -95,14 +113,22 @@ export default function TicketsPage() {
       .catch(() => {});
   }, []);
 
+  // Date-range filter state lives here (above qs) because the useMemo
+  // below references these inside its deps array — JS TDZ would throw
+  // if these were declared later in the function body.
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
+
   const qs = useMemo(() => {
     const sp = new URLSearchParams();
     if (q) sp.set("q", q);
     if (status !== "all") sp.set("status", status);
     if (priority !== "all") sp.set("priority", priority);
     if (tenantId !== "all") sp.set("tenant_id", tenantId);
+    if (createdFrom) sp.set("created_from", createdFrom);
+    if (createdTo) sp.set("created_to", createdTo);
     return sp.toString();
-  }, [q, status, priority, tenantId]);
+  }, [q, status, priority, tenantId, createdFrom, createdTo]);
 
   const reload = useCallback(() => {
     setError(null);
@@ -121,20 +147,181 @@ export default function TicketsPage() {
   }, []);
 
   const unreadCount = (tickets ?? []).filter((t) => t.unread).length;
+  // Funnel popover open-state + create-ticket dialog open-state. Date
+  // inputs (createdFrom/createdTo) are declared above qs because qs's
+  // deps array references them.
+  const [showFilters, setShowFilters] = useState(false);
+  const filterRef = useRef<HTMLDivElement | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  useEffect(() => {
+    if (!showFilters) return;
+    function onDown(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showFilters]);
+  const activeFilterCount =
+    (status !== "all" ? 1 : 0) +
+    (priority !== "all" ? 1 : 0) +
+    (tenantId !== "all" ? 1 : 0) +
+    (createdFrom ? 1 : 0) +
+    (createdTo ? 1 : 0);
 
   return (
     <>
-      <PageHeader
-        title="Tickets"
-        parents={[{ label: "Communication" }]}
-      />
+      {/* Custom header — search centered, Create button top-right.
+          PageHeader replaced because the user asked for this Gmail-style
+          layout that the standard chrome can't accommodate. */}
+      <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-auto" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink>Communication</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Tickets</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        <div className="mx-auto flex items-center gap-1.5">
+          <div className="relative w-[280px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search subject…"
+              className="h-9 pl-8"
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
+            />
+          </div>
+          <div ref={filterRef} className="relative">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 relative"
+              onClick={() => setShowFilters((s) => !s)}
+              title="Filter"
+            >
+              <Filter className="h-4 w-4" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+            {showFilters && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-[320px] rounded-md border bg-popover p-4 shadow-lg space-y-3 text-sm">
+                <div className="font-medium">Filters</div>
+                <div>
+                  <Label className="text-xs">Status</Label>
+                  <Select value={status} onValueChange={(v) => setStatus(v as TicketStatus | "all")}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All status</SelectItem>
+                      <SelectItem value="open">Open</SelectItem>
+                      <SelectItem value="in_progress">In progress</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Priority</Label>
+                  <Select value={priority} onValueChange={(v) => setPriority(v as TicketPriority | "all")}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All priority</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Tenant</Label>
+                  <Select value={tenantId} onValueChange={setTenantId}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All tenants</SelectItem>
+                      {Array.from(tenants.values()).map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">From date</Label>
+                    <Input
+                      type="date"
+                      className="h-8 text-xs"
+                      value={createdFrom}
+                      onChange={(e) => setCreatedFrom(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">To date</Label>
+                    <Input
+                      type="date"
+                      className="h-8 text-xs"
+                      value={createdTo}
+                      onChange={(e) => setCreatedTo(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between pt-1">
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:underline"
+                    onClick={() => {
+                      setStatus("all");
+                      setPriority("all");
+                      setTenantId("all");
+                      setCreatedFrom("");
+                      setCreatedTo("");
+                    }}
+                  >
+                    Reset
+                  </button>
+                  <Button size="sm" onClick={() => setShowFilters(false)}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="ml-auto">
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="h-3.5 w-3.5" /> Create ticket
+          </Button>
+        </div>
+      </header>
       <div className="flex h-[calc(100vh-3.5rem)]">
         {/* Left inner sidebar: filters + preamble cards. Filters stack
             consistently on a single column with uniform height so they
             don't go "weave-y" between the search row, the status/priority
             grid, and the tenant picker. */}
         <div className="w-[380px] shrink-0 border-r flex flex-col bg-muted/20">
-          <div className="border-b p-4 space-y-3">
+          <div className="border-b p-4">
+            {/* Search + per-field filters moved to the page header. Left
+                pane keeps just the "Inbox" label + unread count so it
+                doesn't compete with the preamble list for attention. */}
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Inbox</div>
               {unreadCount > 0 && (
@@ -143,57 +330,6 @@ export default function TicketsPage() {
                 </Badge>
               )}
             </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search subject…"
-                className="h-9 pl-8 text-xs"
-                value={qInput}
-                onChange={(e) => setQInput(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Select value={status} onValueChange={(v) => setStatus(v as TicketStatus | "all")}>
-                <SelectTrigger className="h-9 text-xs w-full">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All status</SelectItem>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="in_progress">In progress</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={priority}
-                onValueChange={(v) => setPriority(v as TicketPriority | "all")}
-              >
-                <SelectTrigger className="h-9 text-xs w-full">
-                  <SelectValue placeholder="Priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All priority</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Select value={tenantId} onValueChange={setTenantId}>
-              <SelectTrigger className="h-9 text-xs w-full">
-                <SelectValue placeholder="Tenant" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All tenants</SelectItem>
-                {Array.from(tenants.values()).map((t) => (
-                  <SelectItem key={t.id} value={String(t.id)}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Preamble list */}
@@ -241,7 +377,128 @@ export default function TicketsPage() {
           {error}
         </div>
       )}
+
+      {showCreate && (
+        <CreateTicketDialog
+          tenants={Array.from(tenants.values())}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false);
+            reload();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function CreateTicketDialog({
+  tenants,
+  onClose,
+  onCreated,
+}: {
+  tenants: Tenant[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [tenantId, setTenantId] = useState<string>("");
+  const [subject, setSubject] = useState("");
+  const [priority, setPriority] = useState<TicketPriority>("normal");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tenantId) {
+      setError("Pick a tenant.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/api/admin/tickets", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: Number(tenantId),
+          subject,
+          body,
+          priority,
+        }),
+      });
+      onCreated();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Create ticket</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <Label>Tenant</Label>
+            <Select value={tenantId} onValueChange={setTenantId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Pick a tenant" />
+              </SelectTrigger>
+              <SelectContent>
+                {tenants.map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <Label>Subject</Label>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} minLength={3} required />
+            </div>
+            <div>
+              <Label>Priority</Label>
+              <Select value={priority} onValueChange={(v) => setPriority(v as TicketPriority)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Description</Label>
+            <RichEditor
+              value={body}
+              onChange={setBody}
+              placeholder="What's the issue?"
+              minHeight={180}
+            />
+          </div>
+          {error && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy || !body.trim() || !tenantId}>
+              {busy ? "Creating…" : "Create ticket"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

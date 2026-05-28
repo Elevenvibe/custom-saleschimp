@@ -102,7 +102,12 @@ async def _list_messages(
     scope_id: int | None,
     limit: int,
     folder: str | None = None,
+    unread: bool | None = None,
+    received_from: str | None = None,
+    received_to: str | None = None,
 ) -> list[MailMessageOut]:
+    from datetime import date, datetime as _dt, timedelta
+
     stmt = (
         select(MailMessage)
         .where(MailMessage.scope_kind == scope_kind, MailMessage.scope_id == scope_id)
@@ -121,6 +126,31 @@ async def _list_messages(
                 MailMessage.folder == folder,
                 MailMessage.direction == "inbound",
             )
+    if unread is True:
+        # 'unread' is inbound + never opened. Outbound rows are
+        # authored locally so they're trivially read.
+        stmt = stmt.where(
+            MailMessage.direction == "inbound", MailMessage.read_at.is_(None)
+        )
+    elif unread is False:
+        stmt = stmt.where(MailMessage.read_at.isnot(None))
+
+    def _parse(d: str) -> date:
+        return _dt.strptime(d, "%Y-%m-%d").date()
+
+    if received_from:
+        try:
+            stmt = stmt.where(MailMessage.received_at >= _parse(received_from))
+        except ValueError as e:
+            raise HTTPException(400, f"received_from must be YYYY-MM-DD: {e}") from None
+    if received_to:
+        try:
+            stmt = stmt.where(
+                MailMessage.received_at < _parse(received_to) + timedelta(days=1)
+            )
+        except ValueError as e:
+            raise HTTPException(400, f"received_to must be YYYY-MM-DD: {e}") from None
+
     rows = (await session.execute(stmt)).scalars().all()
     return [_serialize(m) for m in rows]
 
@@ -159,8 +189,13 @@ async def admin_list_mail(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = Query(100, ge=1, le=500),
     folder: str | None = Query(None, description="Filter by folder: INBOX / SENT / SPAM / UPDATES"),
+    unread: bool | None = Query(None, description="true → only unread, false → only read"),
+    received_from: str | None = Query(None, description="ISO YYYY-MM-DD, inclusive"),
+    received_to: str | None = Query(None, description="ISO YYYY-MM-DD, inclusive"),
 ) -> list[MailMessageOut]:
-    return await _list_messages(session, "platform", None, limit, folder)
+    return await _list_messages(
+        session, "platform", None, limit, folder, unread, received_from, received_to
+    )
 
 
 @admin_router.get("/{msg_id}", response_model=MailMessageOut)
@@ -218,9 +253,14 @@ async def tenant_list_mail(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = Query(100, ge=1, le=500),
     folder: str | None = Query(None, description="Filter by folder: INBOX / SENT / SPAM / UPDATES"),
+    unread: bool | None = Query(None, description="true → only unread, false → only read"),
+    received_from: str | None = Query(None, description="ISO YYYY-MM-DD, inclusive"),
+    received_to: str | None = Query(None, description="ISO YYYY-MM-DD, inclusive"),
 ) -> list[MailMessageOut]:
     tenant_id = await _tenant_scope_id(session, claims)
-    return await _list_messages(session, "tenant", tenant_id, limit, folder)
+    return await _list_messages(
+        session, "tenant", tenant_id, limit, folder, unread, received_from, received_to
+    )
 
 
 @tenant_router.get("/{msg_id}", response_model=MailMessageOut)

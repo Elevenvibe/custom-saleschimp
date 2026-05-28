@@ -280,7 +280,10 @@ async def list_all_tickets(
     priority_filter: Annotated[TicketPriority | None, Query(alias="priority")] = None,
     # Search across subject + creator email. Case-insensitive substring.
     q: str | None = Query(None, min_length=1, max_length=200),
+    created_from: str | None = Query(None, description="ISO YYYY-MM-DD, inclusive"),
+    created_to: str | None = Query(None, description="ISO YYYY-MM-DD, inclusive"),
 ) -> list[TicketOut]:
+    from datetime import date as _date, datetime as _dt, timedelta
     from sqlalchemy import func as _func, or_
 
     stmt = select(SupportTicket)
@@ -298,10 +301,75 @@ async def list_all_tickets(
                 _func.lower(SupportTicket.created_by_email).like(like),
             )
         )
+
+    def _parse(d: str) -> _date:
+        return _dt.strptime(d, "%Y-%m-%d").date()
+
+    if created_from:
+        try:
+            stmt = stmt.where(SupportTicket.created_at >= _parse(created_from))
+        except ValueError as e:
+            raise HTTPException(400, f"created_from must be YYYY-MM-DD: {e}") from None
+    if created_to:
+        try:
+            stmt = stmt.where(
+                SupportTicket.created_at < _parse(created_to) + timedelta(days=1)
+            )
+        except ValueError as e:
+            raise HTTPException(400, f"created_to must be YYYY-MM-DD: {e}") from None
     rows = (
         await session.execute(stmt.order_by(desc(SupportTicket.updated_at)))
     ).scalars().all()
     return [_serialize_ticket(t) for t in rows]
+
+
+# Admin-side ticket creation — open a ticket on behalf of a tenant.
+# Useful when staff captures a phone or live-chat issue and wants to
+# track it in the same inbox the tenant can see.
+class AdminTicketCreateIn(BaseModel):
+    tenant_id: int
+    subject: str = Field(..., min_length=3, max_length=200)
+    body: str = Field(..., min_length=1, max_length=10_000)
+    priority: TicketPriority = "normal"
+
+
+@admin_router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
+async def admin_open_ticket(
+    body: AdminTicketCreateIn,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TicketOut:
+    # author_kind='platform' on the first message so the tenant can see
+    # that staff opened this on their behalf.
+    ticket = SupportTicket(
+        tenant_id=body.tenant_id,
+        subject=body.subject,
+        priority=body.priority,
+        status="open",
+        created_by_email=claims.get("email") or "platform",
+        read_at=_now(),  # we authored it; trivially read on our side
+    )
+    session.add(ticket)
+    await session.flush()
+    session.add(
+        SupportTicketMessage(
+            ticket_id=ticket.id,
+            author_kind="platform",
+            author_email=claims.get("email") or "platform",
+            body=body.body,
+        )
+    )
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=claims.get("uid"),
+        action="admin.ticket.open",
+        target_kind="tenant",
+        target_id=str(body.tenant_id),
+        payload={"ticket_id": ticket.id, "subject": body.subject},
+    )
+    await session.commit()
+    return _serialize_ticket(ticket)
 
 
 @admin_router.get("/{ticket_id}", response_model=TicketDetailOut)

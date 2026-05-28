@@ -16,6 +16,7 @@ import type { Team } from "@stackframe/stack";
 import {
   AlertTriangle,
   ArrowUpCircle,
+  AtSign, // [saleschimp-overlay] tenant email icon
   AudioLines,
   BarChart3, // [saleschimp-overlay] metrics icon
   Boxes, // [saleschimp-overlay] marketplace icon
@@ -179,9 +180,9 @@ const NAV_SECTIONS: SidebarNavSection[] = [
     ],
   },
   // [saleschimp-overlay] ACCOUNT — tenant-side management surfaces that
-  // didn't exist in upstream Dograh: Members (invite/remove teammates,
-  // change roles) and Tickets (support inbox). Both render in the
-  // /console-bridge iframe.
+  // didn't exist in upstream Dograh: Members, Email (gmail-style inbox
+  // bound to the tenant's IMAP/SMTP creds), and Tickets (support inbox).
+  // All render in the /console-bridge iframe.
   {
     label: "ACCOUNT",
     items: [
@@ -189,6 +190,11 @@ const NAV_SECTIONS: SidebarNavSection[] = [
         title: "Members",
         url: "/console-bridge/members",
         icon: Users,
+      },
+      {
+        title: "Email",
+        url: "/console-bridge/email",
+        icon: AtSign,
       },
       {
         title: "Tickets",
