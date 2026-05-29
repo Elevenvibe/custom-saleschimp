@@ -60,9 +60,11 @@ export default function SuspendedPage() {
     api<SuspensionInfo>("/api/tenant/suspension-info")
       .then((d) => {
         setInfo(d);
-        // No longer suspended → back into the app.
+        // No longer suspended → back into the Dograh chrome (the
+        // /console-bridge/* wrapper), NOT the bare /console page which
+        // strands the tenant outside the app shell.
         if (!d.suspended && typeof window !== "undefined") {
-          window.location.href = "/console";
+          window.location.href = "/console-bridge/billing";
         }
       })
       .catch((e) => setError((e as Error).message));

@@ -102,10 +102,11 @@ function ElementsInner({
     setError(null);
     try {
       // `redirect: "if_required"` keeps card-only flows on-page; only
-      // 3DS / redirect-required methods route to the return_url. The
-      // path includes /console/ explicitly because Stripe redirects the
-      // browser directly — Next's basePath handling never sees this URL.
-      const returnUrl = `${window.location.origin}/console/billing`;
+      // 3DS / redirect-required methods route to the return_url. Use the
+      // /console-bridge/* form so Stripe returns the tenant INTO the
+      // Dograh chrome (which iframes /console/billing), not to the bare
+      // /console/billing page outside the app shell.
+      const returnUrl = `${window.location.origin}/console-bridge/billing`;
       // Branch up front so TypeScript can narrow each result shape —
       // confirmSetup returns { setupIntent } and confirmPayment returns
       // { paymentIntent }; the discriminated union doesn't survive a
