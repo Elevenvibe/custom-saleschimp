@@ -19,6 +19,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ui
+    environment:
+      # Where the overlay middleware checks tenant suspension (server-side,
+      # docker network). Defaults to http://gateway:8080 in code; set here
+      # for clarity / overridability.
+      GATEWAY_INTERNAL_URL: "${GATEWAY_INTERNAL_URL:-http://gateway:8080}"
 
   # Create the gateway's Control DB on first boot. Runs after postgres is healthy,
   # exits immediately. Idempotent.
