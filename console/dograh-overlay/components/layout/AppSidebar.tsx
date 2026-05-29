@@ -15,15 +15,12 @@
 import type { Team } from "@stackframe/stack";
 import {
   AlertTriangle,
-  ArrowUpCircle,
   AtSign, // [saleschimp-overlay] tenant email icon
   AudioLines,
   BarChart3, // [saleschimp-overlay] metrics icon
   Boxes, // [saleschimp-overlay] marketplace icon
   ScrollText, // [saleschimp-overlay] logs icon
   Brain,
-  ChevronLeft,
-  ChevronRight,
   CircleDollarSign,
   CreditCard, // [saleschimp-overlay] plans icon
   Database,
@@ -51,15 +48,9 @@ import ThemeToggle from "@/components/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
 // [saleschimp-overlay] breadcrumb is supplied by the overlay itself
 // (console/dograh-overlay/components/ui/breadcrumb.tsx) — Dograh upstream
-// doesn't ship this primitive. Proof that overlay-ui resolves natively.
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+// (breadcrumb overlay primitive still ships in components/ui/breadcrumb.tsx
+// for other consumers; the sidebar brand no longer uses it after the
+// sidebar-08 redesign.)
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,13 +70,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
-import { useLatestReleaseVersion } from "@/hooks/useLatestReleaseVersion";
 import type { LocalUser } from "@/lib/auth";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -153,11 +142,9 @@ const NAV_SECTIONS: SidebarNavSection[] = [
         url: "/recordings",
         icon: AudioLines,
       },
-      {
-        title: "Developers",
-        url: "/api-keys",
-        icon: Key,
-      },
+      // [saleschimp-overlay] "Developers" (/api-keys) moved OUT of the nav
+      // into the profile dropdown — it's an occasional/account-level action,
+      // not a primary destination.
     ],
   },
   {
@@ -207,11 +194,9 @@ const NAV_SECTIONS: SidebarNavSection[] = [
         url: "/console-bridge/email",
         icon: AtSign,
       },
-      {
-        title: "Tickets",
-        url: "/console-bridge/tickets",
-        icon: LifeBuoy,
-      },
+      // [saleschimp-overlay] "Tickets" moved OUT of ACCOUNT — it now renders
+      // as "Support" pinned to the BOTTOM of the sidebar (sidebar-08
+      // NavSecondary pattern). See SUPPORT_ITEMS below.
     ],
   },
   // [saleschimp-overlay] BILLING section — these point at
@@ -268,14 +253,13 @@ export function AppSidebar() {
   }
   const selectedTeam = selectedTeamRef.current;
 
-  // Version info from app config context
+  // Version info from app config context (still shown in the brand subtitle).
   const versionInfo = config ? { ui: config.uiVersion, api: config.apiVersion } : null;
 
-  // Check for updates only on self-hosted (OSS) deployments — cloud is managed for the user.
-  const { latest: latestRelease, isBehind, isLatest } = useLatestReleaseVersion(
-    versionInfo?.ui,
-    { enabled: config?.deploymentMode === "oss" },
-  );
+  // [saleschimp-overlay] The update-availability check (useLatestReleaseVersion)
+  // was REMOVED from the sidebar — it's being relocated to super-admin behind
+  // a permission (see super-admin-permissions slice). Dropping the hook here
+  // also stops every tenant pinging GitHub releases on each mount.
 
   const isActive = (path: string) => pathname.startsWith(path);
 
@@ -351,76 +335,39 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r">
-      <SidebarHeader className="border-b px-2 py-3 notranslate" translate="no">
-        <div className="flex items-center justify-between">
-          <div className={cn("flex items-center gap-2", isCollapsed && "hidden")}>
-            {/* [saleschimp-overlay] White-label brand crumb rendered with
-                the overlay-supplied shadcn `breadcrumb` primitive
-                (console/dograh-overlay/components/ui/breadcrumb.tsx).
-                This is the live proof that the overlay-ui pattern reaches
-                the running UI on 8080/8081. The version tag + update
-                badges below are upstream Dograh features, left intact. */}
-            <Breadcrumb className="px-2">
-              <BreadcrumbList className="gap-1 sm:gap-1.5 text-base">
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <Link href="/" className="text-xl font-bold text-foreground">
-                      SalesChimp
-                    </Link>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-sm font-medium text-muted-foreground">
-                    Dograh
-                    {versionInfo && (
-                      <span className="ml-1 text-xs font-normal">v{versionInfo.ui}</span>
-                    )}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-            {isBehind && latestRelease && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <a
-                    href="https://docs.dograh.com/deployment/update"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-md border bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-900 transition-opacity hover:opacity-80 dark:bg-amber-950 dark:text-amber-200"
-                  >
-                    <ArrowUpCircle className="h-3 w-3" />
-                    Update
-                  </a>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Latest: {latestRelease} — click to see the update guide</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {isLatest && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center rounded-md border bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
-                    Latest
+    <Sidebar collapsible="icon" variant="inset" className="bg-sidebar">
+      <SidebarHeader className="px-1 py-2 notranslate" translate="no">
+        {/* [saleschimp-overlay] sidebar-08 brand pattern — square icon box +
+            label, properly aligned (replaces the old breadcrumb crumb which
+            sat misaligned against the trigger).
+            - The update-available badge was REMOVED from here; it's being
+              relocated to super-admin behind a permission (see the
+              super-admin-permissions slice).
+            - The collapse trigger now lives in the top AppHeader
+              (AppLayout overlay), matching the sidebar-08 layout where the
+              trigger sits in the page header, not the sidebar. */}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              <Link href="/" className="notranslate" translate="no">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  <AudioLines className="size-4" />
+                </div>
+                <div
+                  className={cn(
+                    "grid flex-1 text-left text-sm leading-tight",
+                    isCollapsed && "hidden"
+                  )}
+                >
+                  <span className="truncate font-semibold">SalesChimp</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    Voice AI{versionInfo ? ` · v${versionInfo.ui}` : ""}
                   </span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>You&apos;re running the latest release</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-
-          <SidebarTrigger className={cn("hover:bg-accent", isCollapsed && "mx-auto")}>
-            {isCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </SidebarTrigger>
-        </div>
+                </div>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
 
         {provider === "stack" && (
           <div className={cn("mt-3 notranslate", isCollapsed && "hidden")} translate="no">
@@ -466,6 +413,17 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroup>
         ))}
+
+        {/* [saleschimp-overlay] Support pinned to the BOTTOM (sidebar-08
+            NavSecondary pattern via mt-auto). This is the renamed Tickets
+            entry, moved out of the ACCOUNT section per the cleaner-UI pass. */}
+        <SidebarGroup className="mt-auto">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarLink item={{ title: "Support", url: "/console-bridge/tickets", icon: LifeBuoy }} />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter
@@ -518,6 +476,23 @@ export function AppSidebar() {
                     <Settings className="mr-2 h-4 w-4" />
                     Platform Settings
                   </DropdownMenuItem>
+                  {/* [saleschimp-overlay] Developers moved here from the nav. */}
+                  <DropdownMenuItem onClick={() => router.push("/api-keys")} className="cursor-pointer">
+                    <Key className="mr-2 h-4 w-4" />
+                    Developers
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {/* [saleschimp-overlay] Theme toggle moved here from the
+                      sidebar footer. Rendered as a row (stopPropagation) so
+                      toggling doesn't close the menu. */}
+                  <div
+                    className="px-1 py-0.5 notranslate"
+                    translate="no"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ThemeToggle showLabel className="w-full justify-start hover:bg-accent" />
+                  </div>
+                  <DropdownMenuSeparator />
                   {/* [saleschimp-overlay] Wrap logout so we also drop the
                       console's localStorage token. Otherwise a Dograh sign-
                       out leaves a zombie sc_console_token alive that would
@@ -608,6 +583,22 @@ export function AppSidebar() {
                     <CircleDollarSign className="mr-2 h-4 w-4" />
                     Usage
                   </DropdownMenuItem>
+                  {/* [saleschimp-overlay] Developers moved here from the nav. */}
+                  <DropdownMenuItem onClick={() => router.push("/api-keys")} className="cursor-pointer">
+                    <Key className="mr-2 h-4 w-4" />
+                    Developers
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {/* [saleschimp-overlay] Theme toggle moved here from the
+                      sidebar footer (row, stopPropagation so it doesn't close). */}
+                  <div
+                    className="px-1 py-0.5 notranslate"
+                    translate="no"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ThemeToggle showLabel className="w-full justify-start hover:bg-accent" />
+                  </div>
+                  <DropdownMenuSeparator />
                   {/* [saleschimp-overlay] Mirrors the local-auth branch — drop
                       the console token alongside Dograh's logout so the two
                       sessions tear down together. */}
@@ -632,30 +623,9 @@ export function AppSidebar() {
             </div>
           )}
 
-          <div className={cn("mt-2 border-t pt-2", isCollapsed && "flex justify-center")}>
-            {isCollapsed ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="notranslate" translate="no">
-                    <ThemeToggle
-                      showLabel={false}
-                      className="hover:bg-accent hover:text-accent-foreground"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p>Toggle theme</p>
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <div className="notranslate" translate="no">
-                <ThemeToggle
-                  showLabel={true}
-                  className="hover:bg-accent hover:text-accent-foreground"
-                />
-              </div>
-            )}
-          </div>
+          {/* [saleschimp-overlay] Theme toggle relocated into the profile
+              dropdown above (both auth branches). The standalone footer
+              toggle was removed in the cleaner-UI pass. */}
         </div>
       </SidebarFooter>
       <SidebarRail />
