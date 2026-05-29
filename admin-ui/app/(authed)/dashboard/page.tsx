@@ -62,6 +62,7 @@ type Overview = {
   subscriptions: { active: number; new_this_month: number; monthly: { month: string; count: number }[] };
   top_paying_tenants: { tenant_id: number; name: string; amount_micros: number }[];
   payment_gateways: { provider: string; amount_cents: number; count: number }[];
+  recent_payments: { tenant: string; amount_cents: number; currency: string; provider: string; purpose: string; created_at: string | null }[];
   package_counts: { name: string; count: number }[];
   newly_registered: { id: number; name: string; logo_url: string | null; created_at: string | null; package: string | null }[];
   recent_subscriptions: { name: string; package: string; started_at: string | null; source: string }[];
@@ -184,6 +185,23 @@ function OverviewTab({
           ))}
         </TableCard>
       </div>
+
+      {/* Recent succeeded payments — payment-backed (purpose tags subscription vs top-up). */}
+      <TableCard title="Recent payments" subtitle="Captured payments across all tenants" empty="No captured payments yet. Configure a gateway + confirm a payment (webhook or sync).">
+        {data.recent_payments.map((p, i) => (
+          <div key={i} className="flex items-center justify-between gap-2 border-b py-2 last:border-0">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">{p.tenant}</div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="capitalize">{p.provider}</span>
+                <Badge variant="secondary" className="text-[10px]">{p.purpose === "subscription" ? "subscription" : "top-up"}</Badge>
+                <span>{p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}</span>
+              </div>
+            </div>
+            <div className="shrink-0 font-medium tabular-nums">{usdCents(p.amount_cents)}</div>
+          </div>
+        ))}
+      </TableCard>
 
       {/* Tables row 2 */}
       <div className="grid gap-4 lg:grid-cols-2">

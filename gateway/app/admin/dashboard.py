@@ -200,6 +200,28 @@ async def dashboard_overview(
         {"provider": p, "amount_cents": int(a), "count": int(c)} for p, a, c in pg_rows
     ]
 
+    # ---- recent succeeded payments (payment-backed, with subscription attr) ----
+    paid_rows = (
+        await session.execute(
+            select(PaymentIntent)
+            .where(PaymentIntent.status.in_(("succeeded", "captured", "paid")))
+            .order_by(PaymentIntent.created_at.desc())
+            .limit(8)
+        )
+    ).scalars().all()
+    paid_names = await _tenant_name_map(session, [p.tenant_id for p in paid_rows])
+    recent_payments = [
+        {
+            "tenant": paid_names.get(p.tenant_id, f"#{p.tenant_id}"),
+            "amount_cents": int(p.amount_cents),
+            "currency": p.currency,
+            "provider": p.provider,
+            "purpose": getattr(p, "purpose", "wallet_topup"),
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in paid_rows
+    ]
+
     # ---- subscriptions (tenant_packages) ----
     sub_active = int(
         (
@@ -375,6 +397,7 @@ async def dashboard_overview(
         "subscriptions": subscriptions,
         "top_paying_tenants": top_paying,
         "payment_gateways": payment_gateways,
+        "recent_payments": recent_payments,
         "package_counts": package_counts,
         "newly_registered": newly_registered,
         "recent_subscriptions": recent_subscriptions,

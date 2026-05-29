@@ -8,7 +8,7 @@ GET /api/admin/payments/intents              recent intents across all tenants
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import require_super_admin
 from app.db import get_session
 from app.payments import service as payments_service
+from app.payments.adapters.base import ProviderError
 from app.payments.cron import get_status, run_once
 from app.payments.models import PaymentIntent
 
@@ -94,3 +95,24 @@ async def list_intents(
         )
         for r in rows
     ]
+
+
+@router.post("/intents/{intent_id}/sync")
+async def sync_intent(
+    intent_id: int,
+    _claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Force-reconcile one intent against the provider — the no-webhook
+    path. Lets an admin confirm a payment (and credit the wallet) when a
+    webhook never arrived, which is what makes the dashboard's payment
+    gateway breakdown populate in environments without webhook delivery."""
+    intent = await session.get(PaymentIntent, intent_id)
+    if intent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "intent not found")
+    try:
+        result = await payments_service.sync_intent(session, intent)
+    except ProviderError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from None
+    await session.commit()
+    return {"result": result, "status": intent.status}

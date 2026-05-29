@@ -278,6 +278,23 @@ async def reconcile_event(
     return "unhandled"
 
 
+async def sync_intent(session: AsyncSession, intent: PaymentIntent) -> str:
+    """Reconcile a single payment_intent against the provider's current
+    status — the no-webhook path. Fetches the live status from the
+    provider, then runs it through the same reconcile_event logic a
+    webhook would, so the wallet is credited exactly once (idempotent on
+    intent.status). Returns the reconcile result string.
+    """
+    if intent.status in {"succeeded", "refunded"}:
+        return "already_final"
+    try:
+        adapter = get_provider(intent.provider)
+    except UnknownProvider:
+        raise ProviderError(f"unknown provider {intent.provider!r}") from None
+    event = await adapter.fetch_status(provider_ref=intent.provider_ref)
+    return await reconcile_event(session, intent.provider, event)
+
+
 async def try_auto_reload(session: AsyncSession, wallet: Wallet) -> str:
     """One pass for one wallet. Returns a short status the cron logs.
 

@@ -57,6 +57,11 @@ class PaymentIntent(Base):
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False, server_default="USD")
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    # What this payment paid for. 'wallet_topup' (default) keeps existing
+    # behaviour; 'subscription' + package_id attributes it to a plan, which
+    # powers the dashboard's payment-backed "recent paid subscriptions".
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False, server_default="wallet_topup")
+    package_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     payment_method_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     ledger_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True)

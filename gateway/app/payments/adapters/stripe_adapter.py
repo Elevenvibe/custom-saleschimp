@@ -209,6 +209,33 @@ class StripeAdapter(BillingProvider):
             error=None if status != "failed" else init.raw.get("last_payment_error", {}).get("message"),
         )
 
+    async def fetch_status(self, *, provider_ref: str) -> NormalizedEvent:
+        """GET the PaymentIntent and map its status to a NormalizedEvent.
+        Powers the no-webhook sync path so a payment confirms even when
+        the webhook never reaches us (local dev / missing endpoint)."""
+        cfg = await self._resolved()
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_API}/payment_intents/{provider_ref}",
+                headers=self._headers(cfg.secret_key),
+            )
+        if resp.status_code >= 400:
+            raise ProviderError(f"stripe: cannot fetch intent {resp.status_code}")
+        obj = resp.json()
+        st = obj.get("status", "")
+        kind = (
+            "topup.succeeded" if st == "succeeded"
+            else "topup.failed" if st == "canceled"
+            else "ignored"  # processing / requires_* → not final yet
+        )
+        return NormalizedEvent(
+            kind=kind,
+            provider_ref=obj.get("id"),
+            amount_cents=int(obj.get("amount_received") or obj.get("amount") or 0),
+            currency=(obj.get("currency") or "usd").upper(),
+            raw=obj,
+        )
+
     def verify_webhook(self, *, payload: bytes, signature: str) -> dict[str, Any]:
         # Webhook handlers are sync-by-design (FastAPI route awaits the
         # body, then hands the raw bytes off to us). Use the cached

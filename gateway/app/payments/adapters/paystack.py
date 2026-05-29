@@ -164,6 +164,34 @@ class PaystackAdapter(BillingProvider):
             raw=init.raw,
         )
 
+    async def fetch_status(self, *, provider_ref: str) -> NormalizedEvent:
+        """Verify the transaction by reference and map to a NormalizedEvent.
+        No-webhook sync path — Paystack's /transaction/verify returns the
+        authoritative current status."""
+        cfg = await self._resolved()
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_API}/transaction/verify/{provider_ref}",
+                headers=self._headers(cfg.secret_key),
+            )
+        body = resp.json() if resp.content else {}
+        if resp.status_code >= 400 or not body.get("status"):
+            raise ProviderError(f"paystack: cannot verify transaction {provider_ref}")
+        data = body.get("data") or {}
+        st = data.get("status", "")
+        kind = (
+            "topup.succeeded" if st == "success"
+            else "topup.failed" if st in {"failed", "abandoned", "reversed"}
+            else "ignored"  # ongoing / pending
+        )
+        return NormalizedEvent(
+            kind=kind,
+            provider_ref=data.get("reference") or provider_ref,
+            amount_cents=int(data.get("amount") or 0),
+            currency=(data.get("currency") or "USD").upper(),
+            raw=data,
+        )
+
     def verify_webhook(self, *, payload: bytes, signature: str) -> dict[str, Any]:
         cfg = config_service.get_sync("paystack")
         secret = cfg.secret_key if cfg else ""

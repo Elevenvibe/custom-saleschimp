@@ -133,6 +133,37 @@ async def topup(
     )
 
 
+@router.post("/wallet/topup/{provider_ref}/sync")
+async def sync_topup(
+    provider_ref: str,
+    claims: Annotated[dict, Depends(require_org_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Reconcile a just-confirmed top-up against the provider without
+    waiting for the webhook. The customer app calls this right after
+    Stripe Elements / Paystack returns success, so the wallet credits
+    immediately even if webhook delivery is delayed or (in local dev)
+    not wired. Scoped to the caller's tenant so one tenant can't sync
+    another's intent."""
+    tenant_id = await _tenant_id_for(session, claims)
+    intent = (
+        await session.execute(
+            select(PaymentIntent).where(
+                PaymentIntent.provider_ref == provider_ref,
+                PaymentIntent.tenant_id == tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if intent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "intent not found")
+    try:
+        result = await payments_service.sync_intent(session, intent)
+    except ProviderError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from None
+    await session.commit()
+    return {"result": result, "status": intent.status}
+
+
 class SetupIntentOut(BaseModel):
     client_secret: str
     id: str

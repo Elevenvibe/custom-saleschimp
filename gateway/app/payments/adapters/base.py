@@ -115,3 +115,15 @@ class BillingProvider(ABC):
 
     @abstractmethod
     def parse_event(self, event: dict[str, Any]) -> NormalizedEvent: ...
+
+    async def fetch_status(self, *, provider_ref: str) -> NormalizedEvent:
+        """Poll the provider for an intent's CURRENT status and return it
+        as a NormalizedEvent (same shape parse_event emits).
+
+        This is the no-webhook reconciliation path: when a webhook can't
+        reach us (local dev, missing endpoint), the customer/admin can
+        trigger a sync that reads the truth from the provider directly.
+        Default raises so a provider that hasn't implemented it fails
+        loudly rather than silently reporting 'ignored'.
+        """
+        raise ProviderError(f"{self.slug}: status sync not implemented")
