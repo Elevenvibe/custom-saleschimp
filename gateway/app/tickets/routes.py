@@ -29,7 +29,7 @@ from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
 from app.customer_auth.deps import require_customer
 from app.db import get_session
-from app.notifications.service import notify_all_platform_users, notify_tenant
+from app.notifications.service import dispatch_to_all_admins, dispatch_to_tenant
 from app.tenants.models import Tenant, TenantMember
 from app.tickets.models import SupportTicket, SupportTicketMessage
 
@@ -198,6 +198,7 @@ async def open_ticket(
         session,
         tenant_id=tenant_id,
         ticket_id=ticket.id,
+        type_key="ticket_new",
         title="New support ticket",
         subject=body.subject,
     )
@@ -274,6 +275,7 @@ async def tenant_reply(
         session,
         tenant_id=tenant_id,
         ticket_id=ticket.id,
+        type_key="ticket_reply",
         title="New reply on a support ticket",
         subject=ticket.subject,
     )
@@ -286,20 +288,22 @@ async def _notify_platform_of_ticket(
     *,
     tenant_id: int,
     ticket_id: int,
+    type_key: str,
     title: str,
     subject: str,
 ) -> None:
-    """Emit a bell notification to every super-admin about tenant ticket
-    activity. Best-effort: a notification failure must not fail the reply."""
+    """Route a notification to every super-admin about tenant ticket
+    activity across enabled channels. Best-effort: a notification failure
+    must not fail the reply."""
     try:
         tenant = await session.get(Tenant, tenant_id)
         org = tenant.name if tenant else f"tenant #{tenant_id}"
-        await notify_all_platform_users(
+        await dispatch_to_all_admins(
             session,
+            type_key=type_key,
             title=title,
             body=f"{org}: {subject}",
             link=f"/tenants/{tenant_id}?tab=tickets&ticket={ticket_id}",
-            category="ticket",
         )
     except Exception:  # noqa: BLE001 — notifications are non-critical
         pass
@@ -505,13 +509,13 @@ async def admin_reply(
     await session.flush()
     # Tell the tenant their ticket got a reply. Best-effort.
     try:
-        await notify_tenant(
+        await dispatch_to_tenant(
             session,
             ticket.tenant_id,
+            type_key="ticket_response",
             title="Support replied to your ticket",
             body=ticket.subject,
             link="/tickets",
-            category="ticket",
         )
     except Exception:  # noqa: BLE001
         pass

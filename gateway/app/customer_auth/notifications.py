@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.customer_auth.deps import require_customer
 from app.customer_auth.plans import _tenant_id_for
 from app.db import get_session
+from app.notifications import channels
 from app.notifications.service import (
     NotificationListOut,
     list_notifications,
@@ -42,6 +43,19 @@ async def list_notes(
         recipient_id=tenant_id,
         limit=limit,
         only_unread=only_unread,
+    )
+
+
+@router.get("/realtime-config")
+async def realtime_config(
+    claims: Annotated[dict, Depends(require_customer)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Public (no-secret) config for the browser to subscribe to live
+    notifications for THIS tenant's channel/interest."""
+    tenant_id = await _tenant_id_for(session, claims)
+    return await channels.public_realtime_config(
+        session, recipient_kind=_KIND, recipient_id=tenant_id
     )
 
 

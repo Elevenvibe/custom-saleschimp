@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
-import { ArrowLeftRight, Clock, CreditCard, KeyRound, Lock, Mail, ShieldCheck, User } from "lucide-react";
+import { ArrowLeftRight, Bell, Clock, CreditCard, KeyRound, Lock, Mail, ShieldCheck, User } from "lucide-react";
 
 const SETTINGS_NAV = [
   { href: "/settings/profile", label: "Profile", icon: User },
   { href: "/settings/security", label: "Security", icon: Lock },
+  { href: "/settings/notifications", label: "Notifications", icon: Bell },
   { href: "/settings/cronjob", label: "Cronjob", icon: Clock },
   { href: "/settings/provider-api-keys", label: "Provider API keys", icon: KeyRound },
   { href: "/settings/email-providers", label: "Email providers", icon: Mail },

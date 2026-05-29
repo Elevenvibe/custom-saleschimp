@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Bell, Check } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 type Note = {
   id: number;
@@ -58,6 +59,8 @@ export function NotificationBell() {
     const iv = setInterval(load, POLL_MS);
     return () => clearInterval(iv);
   }, [load]);
+
+  useRealtimeRefresh("/api/tenant/notifications/realtime-config", load);
 
   useEffect(() => {
     if (!open) return;

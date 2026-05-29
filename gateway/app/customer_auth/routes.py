@@ -92,6 +92,19 @@ async def signup(
         request=request,
         payload={"email": email, "company": body.company_name},
     )
+    # Bell the platform team about the new signup (best-effort, routed).
+    try:
+        from app.notifications.service import dispatch_to_all_admins
+
+        await dispatch_to_all_admins(
+            session,
+            type_key="tenant_signup",
+            title="New tenant signup",
+            body=f"{body.company_name} ({email})",
+            link=f"/tenants/{tenant.id}",
+        )
+    except Exception:  # noqa: BLE001
+        pass
     await session.commit()
 
     log.info("signup.created", tenant_id=tenant.id, email=email)

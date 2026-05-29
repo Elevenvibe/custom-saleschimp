@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Bell, Check } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { Button } from "@/components/ui/button";
 
 type Note = {
@@ -64,6 +65,11 @@ export function NotificationBell() {
     const iv = setInterval(load, POLL_MS);
     return () => clearInterval(iv);
   }, [load]);
+
+  // Real-time: subscribe to Pusher Channels when configured. The pushed
+  // event carries no payload — it just nudges us to re-fetch the
+  // authenticated list. Polling above remains the fallback.
+  useRealtimeRefresh("/api/admin/notifications/realtime-config", load);
 
   // Close on outside click.
   useEffect(() => {
