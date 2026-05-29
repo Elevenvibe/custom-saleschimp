@@ -18,6 +18,7 @@ from app.admin.tenants import router as tenants_router
 from app.admin.wallet import router as wallet_router
 from app.admin.mail_cron import router as mail_cron_router
 from app.admin.permissions import router as permissions_router
+from app.admin.notifications import router as notifications_router
 from app.admin.profile import router as profile_router
 from app.admin.security import router as security_router
 from app.mailbox.mail_routes import admin_router as mail_admin_router
@@ -49,3 +50,4 @@ router.include_router(mail_cron_router)
 router.include_router(permissions_router)
 router.include_router(profile_router)
 router.include_router(security_router)
+router.include_router(notifications_router)

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { NotificationBell } from "@/components/NotificationBell";
 
 /** Breadcrumb crumb. label + url means it's a link; url omitted means
  *  it's the terminal page (BreadcrumbPage). Pass the list ordered
@@ -54,7 +55,10 @@ export function PageHeader({
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="ml-auto">{action}</div>
+        <div className="ml-auto flex items-center gap-2">
+          <NotificationBell />
+          {action}
+        </div>
       </div>
     </header>
   );

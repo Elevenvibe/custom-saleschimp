@@ -29,7 +29,8 @@ from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
 from app.customer_auth.deps import require_customer
 from app.db import get_session
-from app.tenants.models import TenantMember
+from app.notifications.service import notify_all_platform_users, notify_tenant
+from app.tenants.models import Tenant, TenantMember
 from app.tickets.models import SupportTicket, SupportTicketMessage
 
 
@@ -193,6 +194,13 @@ async def open_ticket(
         target_id=str(tenant_id),
         payload={"ticket_id": ticket.id, "subject": body.subject},
     )
+    await _notify_platform_of_ticket(
+        session,
+        tenant_id=tenant_id,
+        ticket_id=ticket.id,
+        title="New support ticket",
+        subject=body.subject,
+    )
     await session.commit()
     return _serialize_ticket(ticket)
 
@@ -262,8 +270,39 @@ async def tenant_reply(
         ticket.status = "open"
     ticket.updated_at = _now()
     await session.flush()
+    await _notify_platform_of_ticket(
+        session,
+        tenant_id=tenant_id,
+        ticket_id=ticket.id,
+        title="New reply on a support ticket",
+        subject=ticket.subject,
+    )
     await session.commit()
     return _serialize_message(msg)
+
+
+async def _notify_platform_of_ticket(
+    session: AsyncSession,
+    *,
+    tenant_id: int,
+    ticket_id: int,
+    title: str,
+    subject: str,
+) -> None:
+    """Emit a bell notification to every super-admin about tenant ticket
+    activity. Best-effort: a notification failure must not fail the reply."""
+    try:
+        tenant = await session.get(Tenant, tenant_id)
+        org = tenant.name if tenant else f"tenant #{tenant_id}"
+        await notify_all_platform_users(
+            session,
+            title=title,
+            body=f"{org}: {subject}",
+            link=f"/tenants/{tenant_id}?tab=tickets&ticket={ticket_id}",
+            category="ticket",
+        )
+    except Exception:  # noqa: BLE001 — notifications are non-critical
+        pass
 
 
 # ---- Admin-side router ------------------------------------------------
@@ -464,6 +503,18 @@ async def admin_reply(
         ticket.status = "in_progress"
     ticket.updated_at = _now()
     await session.flush()
+    # Tell the tenant their ticket got a reply. Best-effort.
+    try:
+        await notify_tenant(
+            session,
+            ticket.tenant_id,
+            title="Support replied to your ticket",
+            body=ticket.subject,
+            link="/tickets",
+            category="ticket",
+        )
+    except Exception:  # noqa: BLE001
+        pass
     await session.commit()
     return _serialize_message(msg)
 

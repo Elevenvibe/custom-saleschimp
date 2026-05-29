@@ -28,6 +28,7 @@ from app.config import settings
 from app.customer_auth.invites import public_router as invites_public_router
 from app.customer_auth.marketplace import router as customer_marketplace_router
 from app.customer_auth.logs import router as customer_logs_router
+from app.customer_auth.notifications import router as customer_notifications_router
 from app.customer_auth.org_settings import router as org_settings_router
 from app.customer_auth.suspension import (
     router as suspension_router,
@@ -127,6 +128,7 @@ app.include_router(mail_tenant_router, prefix="/api/tenant")
 app.include_router(customer_marketplace_router, prefix="/api/tenant")
 app.include_router(invites_tenant_router, prefix="/api/tenant")
 app.include_router(customer_me_router, prefix="/api/tenant")
+app.include_router(customer_notifications_router, prefix="/api/tenant")
 app.include_router(customer_plans_router, prefix="/api/tenant")
 app.include_router(customer_wallet_router, prefix="/api/tenant")
 app.include_router(customer_payments_router, prefix="/api/tenant")

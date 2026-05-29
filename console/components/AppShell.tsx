@@ -26,6 +26,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { setToken, type SessionExchangeOut } from "@/lib/api";
+import { NotificationBell } from "@/components/NotificationBell";
 
 type NavItem = { title: string; href: string; icon: ReactNode };
 
@@ -176,7 +177,12 @@ export function AppShell({
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 bg-[color:var(--background)]">{children}</main>
+      <div className="flex flex-1 min-w-0 flex-col">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-end gap-2 border-b border-[color:var(--border)] bg-[color:var(--background)] px-4">
+          <NotificationBell />
+        </header>
+        <main className="flex-1 min-w-0 bg-[color:var(--background)]">{children}</main>
+      </div>
     </div>
   );
 }
