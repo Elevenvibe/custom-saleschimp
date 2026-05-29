@@ -251,12 +251,14 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
 
         {/* Tabs mirror what the user-facing tenant view will eventually show
             on ports 8080/8081 so super-admins navigate the same surface
-            their customers do. Profile + Logs are wired today; the others
-            describe what's coming so reviewers know the cap is intentional
-            (not a missing import). */}
+            their customers do. Overview, Profile, Metrics, Providers,
+            Tickets + Logs are wired today; the others describe what's
+            coming so reviewers know the cap is intentional (not a missing
+            import). */}
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="metrics">Metrics</TabsTrigger>
             <TabsTrigger value="agents">Agents</TabsTrigger>
             <TabsTrigger value="phone">Phone numbers</TabsTrigger>
@@ -412,6 +414,10 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
                 </table>
               </div>
             </section>
+          </TabsContent>
+
+          <TabsContent value="profile">
+            <ProfileTab tenant={t} onSaved={loadTenant} />
           </TabsContent>
 
           <TabsContent value="metrics">
@@ -635,6 +641,145 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
     <div>
       <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-0.5 text-foreground">{value}</div>
+    </div>
+  );
+}
+
+/** Profile tab — the tenant's organization profile (company contact +
+ *  address details). Super-admins can edit on the tenant's behalf via
+ *  PATCH /api/admin/tenants/{id}; the same columns are editable tenant-
+ *  side on /console/settings/organization. Owner email + slug stay
+ *  read-only here (email changes flow through the verified path; slug
+ *  is immutable). */
+function ProfileTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void }) {
+  type ProfileForm = {
+    name: string;
+    company_phone: string;
+    website: string;
+    industry: string;
+    company_size: string;
+    country: string;
+    address: string;
+    city: string;
+    state: string;
+    zip_code: string;
+    about: string;
+  };
+  const initial = useCallback(
+    (): ProfileForm => ({
+      name: tenant.name ?? "",
+      company_phone: tenant.company_phone ?? "",
+      website: tenant.website ?? "",
+      industry: tenant.industry ?? "",
+      company_size: tenant.company_size ?? "",
+      country: tenant.country ?? "",
+      address: tenant.address ?? "",
+      city: tenant.city ?? "",
+      state: tenant.state ?? "",
+      zip_code: tenant.zip_code ?? "",
+      about: tenant.about ?? "",
+    }),
+    [tenant],
+  );
+  const [form, setForm] = useState<ProfileForm>(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  useEffect(() => {
+    setForm(initial());
+  }, [initial]);
+
+  function set<K extends keyof ProfileForm>(k: K, v: string) {
+    setForm((f) => ({ ...f, [k]: v }));
+    setOk(null);
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setOk(null);
+    try {
+      await api(`/api/admin/tenants/${tenant.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(form),
+      });
+      setOk("Profile saved.");
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const text = (
+    k: keyof ProfileForm,
+    label: string,
+    opts: { placeholder?: string; type?: string } = {},
+  ) => (
+    <div>
+      <Label htmlFor={`tp-${k}`}>{label}</Label>
+      <Input
+        id={`tp-${k}`}
+        type={opts.type ?? "text"}
+        value={form[k]}
+        onChange={(e) => set(k, e.target.value)}
+        placeholder={opts.placeholder}
+      />
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-lg border bg-card p-5 space-y-4">
+        <div>
+          <h2 className="text-sm font-medium">Organization profile</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Company contact + address details. Edits here are saved on the
+            tenant&apos;s behalf and are also visible to them under
+            Organization Settings.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {text("name", "Company name", { placeholder: "Acme Inc" })}
+          <Field label="Owner email" value={tenant.owner_email} />
+          {text("company_phone", "Phone", { type: "tel", placeholder: "+1 555 000 1234" })}
+          {text("website", "Website", { placeholder: "https://acme.com" })}
+          {text("industry", "Industry", { placeholder: "SaaS" })}
+          {text("company_size", "Company size", { placeholder: "11–50" })}
+          {text("country", "Country", { placeholder: "United States" })}
+          {text("address", "Address", { placeholder: "123 Market St" })}
+          {text("city", "City", { placeholder: "San Francisco" })}
+          {text("state", "State / region", { placeholder: "CA" })}
+          {text("zip_code", "ZIP / postal code", { placeholder: "94105" })}
+        </div>
+
+        <div>
+          <Label htmlFor="tp-about">About</Label>
+          <textarea
+            id="tp-about"
+            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+            rows={4}
+            value={form.about}
+            onChange={(e) => set("about", e.target.value)}
+            placeholder="Short description of the organization."
+          />
+        </div>
+
+        {error && (
+          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
+        )}
+        {ok && (
+          <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{ok}</div>
+        )}
+        <div className="flex justify-end">
+          <Button onClick={save} disabled={busy}>
+            {busy ? "Saving…" : "Save profile"}
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }

@@ -22,6 +22,18 @@ class Tenant(Base):
     # S3/MinIO ships in a follow-up.
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     favicon_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Organization profile (migration 0024). Editable from both the tenant-
+    # side Organization Settings page and the super-admin tenant Profile tab.
+    company_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    company_size: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    zip_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    about: Mapped[str | None] = mapped_column(String, nullable=True)
     # Tenant-side cap on concurrent calls. NULL → use package default; ints
     # are validated against the package's concurrency_included in the service
     # layer so a tenant can only dial DOWN their own ceiling.

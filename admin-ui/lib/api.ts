@@ -111,6 +111,17 @@ export type Tenant = {
   favicon_url?: string | null;
   concurrent_calls_limit?: number | null;
   auto_fallback_enabled?: boolean;
+  // Organization profile (migration 0024).
+  company_phone?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  company_size?: string | null;
+  country?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip_code?: string | null;
+  about?: string | null;
   // Suspension metadata (migration 0020).
   suspended_at?: string | null;
   suspension_subject?: string | null;

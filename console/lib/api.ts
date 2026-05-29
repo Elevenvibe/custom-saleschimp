@@ -264,6 +264,17 @@ export type OrgSettings = {
   concurrent_calls_effective: number;
   auto_fallback_enabled: boolean;
   package: OrgPackageInfo | null;
+  // Organization profile (migration 0024).
+  company_phone: string | null;
+  website: string | null;
+  industry: string | null;
+  company_size: string | null;
+  country: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  about: string | null;
 };
 
 export type LoginOut = {

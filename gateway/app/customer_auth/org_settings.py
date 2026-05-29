@@ -73,6 +73,17 @@ class OrgSettingsOut(BaseModel):
     concurrent_calls_effective: int
     auto_fallback_enabled: bool
     package: OrgPackageInfo | None
+    # Organization profile (0024).
+    company_phone: str | None = None
+    website: str | None = None
+    industry: str | None = None
+    company_size: str | None = None
+    country: str | None = None
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip_code: str | None = None
+    about: str | None = None
 
 
 class OrgSettingsPatch(BaseModel):
@@ -81,6 +92,32 @@ class OrgSettingsPatch(BaseModel):
     favicon_url: str | None = Field(default=None, max_length=512)
     concurrent_calls_limit: int | None = Field(default=None, ge=1, le=1000)
     auto_fallback_enabled: bool | None = None
+    # Organization profile (0024).
+    company_phone: str | None = Field(default=None, max_length=32)
+    website: str | None = Field(default=None, max_length=255)
+    industry: str | None = Field(default=None, max_length=64)
+    company_size: str | None = Field(default=None, max_length=32)
+    country: str | None = Field(default=None, max_length=64)
+    address: str | None = Field(default=None, max_length=255)
+    city: str | None = Field(default=None, max_length=120)
+    state: str | None = Field(default=None, max_length=120)
+    zip_code: str | None = Field(default=None, max_length=20)
+    about: str | None = Field(default=None, max_length=4000)
+
+
+# Org-profile string fields with identical "trim, empty→NULL" save handling.
+_PROFILE_TEXT_FIELDS = (
+    "company_phone",
+    "website",
+    "industry",
+    "company_size",
+    "country",
+    "address",
+    "city",
+    "state",
+    "zip_code",
+    "about",
+)
 
 
 class PasswordChangeIn(BaseModel):
@@ -144,6 +181,16 @@ def _serialize(tenant: Tenant, pkg: Package | None) -> OrgSettingsOut:
         concurrent_calls_effective=effective,
         auto_fallback_enabled=tenant.auto_fallback_enabled,
         package=pkg_info,
+        company_phone=tenant.company_phone,
+        website=tenant.website,
+        industry=tenant.industry,
+        company_size=tenant.company_size,
+        country=tenant.country,
+        address=tenant.address,
+        city=tenant.city,
+        state=tenant.state,
+        zip_code=tenant.zip_code,
+        about=tenant.about,
     )
 
 
@@ -208,6 +255,13 @@ async def patch_org(
     if body.auto_fallback_enabled is not None:
         tenant.auto_fallback_enabled = body.auto_fallback_enabled
         changes["auto_fallback_enabled"] = body.auto_fallback_enabled
+
+    for field in _PROFILE_TEXT_FIELDS:
+        val = getattr(body, field)
+        if val is not None:
+            cleaned = val.strip() or None
+            setattr(tenant, field, cleaned)
+            changes[field] = cleaned
 
     if changes:
         sub = claims.get("sub", "")

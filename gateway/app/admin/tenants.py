@@ -43,6 +43,17 @@ class TenantOut(BaseModel):
     favicon_url: str | None = None
     concurrent_calls_limit: int | None = None
     auto_fallback_enabled: bool = False
+    # Organization profile (0024) — editable from the Profile tab.
+    company_phone: str | None = None
+    website: str | None = None
+    industry: str | None = None
+    company_size: str | None = None
+    country: str | None = None
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip_code: str | None = None
+    about: str | None = None
     # Suspension metadata (0020) — lets the admin tenant page show why/when
     # and offer an Unsuspend action.
     suspended_at: str | None = None
@@ -83,6 +94,16 @@ def _serialize(t: Tenant) -> TenantOut:
         favicon_url=t.favicon_url,
         concurrent_calls_limit=t.concurrent_calls_limit,
         auto_fallback_enabled=t.auto_fallback_enabled,
+        company_phone=t.company_phone,
+        website=t.website,
+        industry=t.industry,
+        company_size=t.company_size,
+        country=t.country,
+        address=t.address,
+        city=t.city,
+        state=t.state,
+        zip_code=t.zip_code,
+        about=t.about,
         suspended_at=t.suspended_at.isoformat() if t.suspended_at else None,
         suspension_subject=t.suspension_subject,
         suspension_reason=t.suspension_reason,
@@ -232,6 +253,33 @@ class TenantPatchIn(BaseModel):
     concurrent_calls_limit: int | None = None
     logo_url: str | None = None
     favicon_url: str | None = None
+    # Organization profile (0024).
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    company_phone: str | None = None
+    website: str | None = None
+    industry: str | None = None
+    company_size: str | None = None
+    country: str | None = None
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip_code: str | None = None
+    about: str | None = None
+
+
+# Org-profile string fields that share identical "trim, empty→NULL" handling.
+_PROFILE_TEXT_FIELDS = (
+    "company_phone",
+    "website",
+    "industry",
+    "company_size",
+    "country",
+    "address",
+    "city",
+    "state",
+    "zip_code",
+    "about",
+)
 
 
 @router.patch("/{tenant_id}", response_model=TenantOut)
@@ -263,6 +311,15 @@ async def update_tenant(
     if body.favicon_url is not None:
         tenant.favicon_url = body.favicon_url.strip() or None
         changes["favicon_url"] = tenant.favicon_url
+    if body.name is not None and body.name.strip() and body.name.strip() != tenant.name:
+        tenant.name = body.name.strip()
+        changes["name"] = tenant.name
+    for field in _PROFILE_TEXT_FIELDS:
+        val = getattr(body, field)
+        if val is not None:
+            cleaned = val.strip() or None
+            setattr(tenant, field, cleaned)
+            changes[field] = cleaned
 
     if changes:
         await record_audit(

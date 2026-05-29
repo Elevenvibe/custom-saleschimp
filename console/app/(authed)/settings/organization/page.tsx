@@ -71,6 +71,7 @@ export default function OrgSettingsPage() {
       </header>
 
       <IdentityCard data={data} />
+      <CompanyProfileCard data={data} onSaved={load} />
       <BrandingCard data={data} onSaved={load} />
       <ConcurrencyCard data={data} onSaved={load} />
       <PasswordCard />
@@ -338,6 +339,134 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
       <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-1">{value}</div>
     </div>
+  );
+}
+
+// ----- Company profile -----------------------------------------------------
+//
+// Editable company contact + address details (migration 0024). Mirrors the
+// super-admin tenant Profile tab; PATCHes the same /settings/organization
+// endpoint so a single canonical row backs both surfaces.
+
+function CompanyProfileCard({
+  data,
+  onSaved,
+}: {
+  data: OrgSettings;
+  onSaved: () => void;
+}) {
+  type ProfileForm = {
+    company_phone: string;
+    website: string;
+    industry: string;
+    company_size: string;
+    country: string;
+    address: string;
+    city: string;
+    state: string;
+    zip_code: string;
+    about: string;
+  };
+  const initial = (): ProfileForm => ({
+    company_phone: data.company_phone ?? "",
+    website: data.website ?? "",
+    industry: data.industry ?? "",
+    company_size: data.company_size ?? "",
+    country: data.country ?? "",
+    address: data.address ?? "",
+    city: data.city ?? "",
+    state: data.state ?? "",
+    zip_code: data.zip_code ?? "",
+    about: data.about ?? "",
+  });
+  const [form, setForm] = useState<ProfileForm>(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  function set<K extends keyof ProfileForm>(k: K, v: string) {
+    setForm((f) => ({ ...f, [k]: v }));
+    setOk(null);
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setOk(null);
+    try {
+      await api("/api/tenant/settings/organization", {
+        method: "PATCH",
+        body: JSON.stringify(form),
+      });
+      setOk("Profile saved.");
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const text = (
+    k: keyof ProfileForm,
+    label: string,
+    opts: { placeholder?: string; type?: string } = {},
+  ) => (
+    <div>
+      <Label htmlFor={`cp-${k}`}>{label}</Label>
+      <Input
+        id={`cp-${k}`}
+        type={opts.type ?? "text"}
+        value={form[k]}
+        onChange={(e) => set(k, e.target.value)}
+        placeholder={opts.placeholder}
+      />
+    </div>
+  );
+
+  return (
+    <section className="rounded-lg border bg-card p-6 space-y-4">
+      <div>
+        <h2 className="text-sm font-medium">Company profile</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Contact and address details for {data.name}. Shown to your platform
+          administrator and used to pre-fill billing where applicable.
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {text("company_phone", "Phone", { type: "tel", placeholder: "+1 555 000 1234" })}
+        {text("website", "Website", { placeholder: "https://acme.com" })}
+        {text("industry", "Industry", { placeholder: "SaaS" })}
+        {text("company_size", "Company size", { placeholder: "11–50" })}
+        {text("country", "Country", { placeholder: "United States" })}
+        {text("address", "Address", { placeholder: "123 Market St" })}
+        {text("city", "City", { placeholder: "San Francisco" })}
+        {text("state", "State / region", { placeholder: "CA" })}
+        {text("zip_code", "ZIP / postal code", { placeholder: "94105" })}
+      </div>
+      <div>
+        <Label htmlFor="cp-about">About</Label>
+        <textarea
+          id="cp-about"
+          className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+          rows={4}
+          value={form.about}
+          onChange={(e) => set("about", e.target.value)}
+          placeholder="Short description of your organization."
+        />
+      </div>
+      {error && (
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
+      )}
+      {ok && (
+        <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{ok}</div>
+      )}
+      <div className="flex justify-end">
+        <Button onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save profile"}
+        </Button>
+      </div>
+    </section>
   );
 }
 
