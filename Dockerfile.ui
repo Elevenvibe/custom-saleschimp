@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Custom UI image: Dograh's UI built FROM SOURCE so we can overlay our
 # AppSidebar.tsx (the only change vs upstream — adds a BILLING section
 # pointing at /console/*). Builds mirror dograh/ui/Dockerfile's three-
@@ -16,7 +17,10 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++ libc6-compat
 
 COPY dograh/ui/package*.json ./
-RUN rm -rf node_modules && (npm ci || npm install)
+# [mirrors dograh/ui/Dockerfile @ v1.32.0] BuildKit cache mount on the npm
+# cache speeds re-installs. Kept our `|| npm install` fallback (upstream
+# dropped it) so a transient lockfile mismatch doesn't hard-fail the build.
+RUN --mount=type=cache,target=/root/.npm rm -rf node_modules && (npm ci || npm install)
 
 # ---------- Stage 2: build ----------
 FROM node:20-alpine AS build
