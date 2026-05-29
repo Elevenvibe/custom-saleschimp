@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -31,6 +31,10 @@ class SupportTicket(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="open")
     # low | normal | high | urgent
     priority: Mapped[str] = mapped_column(String(10), nullable=False, server_default="normal")
+    # Free-form category (suspension subject for suspension tickets, else
+    # general). assigned_to = platform_user handling it. Both migration 0020.
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assigned_to: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Denormalised so a list of tickets doesn't need a join into
     # tenant_members — and so a ticket keeps its creator name even after
     # that member is removed from the org.

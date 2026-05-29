@@ -29,6 +29,10 @@ from app.customer_auth.invites import public_router as invites_public_router
 from app.customer_auth.marketplace import router as customer_marketplace_router
 from app.customer_auth.logs import router as customer_logs_router
 from app.customer_auth.org_settings import router as org_settings_router
+from app.customer_auth.suspension import (
+    router as suspension_router,
+    suspension_middleware,
+)
 from app.customer_auth.session_exchange import router as session_exchange_router
 from app.mailbox.cron import start_mail_fetcher_loop, stop_mail_fetcher_loop
 from app.mailbox.mail_routes import tenant_router as mail_tenant_router
@@ -93,6 +97,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Suspension enforcement — blocks suspended tenants from non-allowlisted
+# /api/tenant/* routes (allowlist keeps me/tickets/suspension-info open so
+# the /suspended page + support reply still work). Registered after CORS so
+# preflight OPTIONS still get their headers.
+app.middleware("http")(suspension_middleware)
+
 # Gateway-owned routes. Mount BEFORE the catch-all proxy.
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(customer_auth_router, prefix="/api/auth")
@@ -101,6 +111,7 @@ app.include_router(invites_public_router, prefix="/api/auth")
 app.include_router(customer_sso_router, prefix="/api/auth")
 app.include_router(session_exchange_router, prefix="/api/auth")
 app.include_router(org_settings_router, prefix="/api/tenant")
+app.include_router(suspension_router, prefix="/api/tenant")
 app.include_router(tickets_tenant_router, prefix="/api/tenant")
 app.include_router(customer_logs_router, prefix="/api/tenant")
 app.include_router(mailbox_tenant_router, prefix="/api/tenant")

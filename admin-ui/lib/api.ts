@@ -104,6 +104,11 @@ export type Tenant = {
   favicon_url?: string | null;
   concurrent_calls_limit?: number | null;
   auto_fallback_enabled?: boolean;
+  // Suspension metadata (migration 0020).
+  suspended_at?: string | null;
+  suspension_subject?: string | null;
+  suspension_reason?: string | null;
+  suspension_ticket_id?: number | null;
 };
 
 export type PlatformUser = {

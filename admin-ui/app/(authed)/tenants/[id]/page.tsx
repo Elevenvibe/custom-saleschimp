@@ -61,6 +61,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showSuspend, setShowSuspend] = useState(false);
   // Single source of truth for the active tab. Hydrates from the
   // `?tab=` query string so deep links from the /tickets cross-tenant
   // inbox (e.g. ?tab=tickets&ticket=42) land on the right tab.
@@ -104,6 +105,20 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
         method: "PATCH",
         body: JSON.stringify({ status: next }),
       });
+      loadTenant();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unsuspend() {
+    if (!confirm("Reactivate this tenant? Access is restored immediately and the suspension ticket is resolved.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/tenants/${id}/unsuspend`, { method: "POST" });
       loadTenant();
     } catch (e) {
       setError((e as Error).message);
@@ -186,13 +201,17 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
                 Complete signup
               </Button>
             )}
-            {t.dograh_org_id != null && t.status !== "active" && (
+            {t.dograh_org_id != null && t.status !== "active" && t.status !== "suspended" && (
               <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus("active")}>
                 Activate
               </Button>
             )}
-            {t.status !== "suspended" && (
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus("suspended")}>
+            {t.status === "suspended" ? (
+              <Button variant="default" size="sm" disabled={busy} onClick={unsuspend}>
+                Unsuspend
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => setShowSuspend(true)}>
                 Suspend
               </Button>
             )}
@@ -208,6 +227,27 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
         <PageDescription>
           Tenant #{t.id} · <code className="font-mono">{t.slug}</code>
         </PageDescription>
+
+        {t.status === "suspended" && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="font-medium">
+              Suspended{t.suspension_subject ? ` — ${t.suspension_subject}` : ""}
+              {t.suspended_at ? ` · ${new Date(t.suspended_at).toLocaleString()}` : ""}
+            </div>
+            {t.suspension_reason && <div className="mt-1 text-amber-800">{t.suspension_reason}</div>}
+            {t.suspension_ticket_id && (
+              <button
+                type="button"
+                className="mt-2 text-xs underline"
+                onClick={() => {
+                  setTab("tickets");
+                }}
+              >
+                View suspension ticket #{t.suspension_ticket_id}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Tabs mirror what the user-facing tenant view will eventually show
             on ports 8080/8081 so super-admins navigate the same surface
@@ -418,7 +458,157 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
           }}
         />
       )}
+      {showSuspend && (
+        <SuspendDialog
+          tenantId={Number(id)}
+          tenantName={t.name}
+          onClose={() => setShowSuspend(false)}
+          onSuspended={() => {
+            setShowSuspend(false);
+            loadTenant();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+const SUSPENSION_SUBJECTS = [
+  "Payment Overdue",
+  "Subscription Violation",
+  "Abuse or Fraud",
+  "Suspicious Activity",
+  "Compliance Issue",
+  "Excessive Resource Usage",
+  "Manual Administrative Action",
+  "Security Investigation",
+  "Other",
+];
+
+function SuspendDialog({
+  tenantId,
+  tenantName,
+  onClose,
+  onSuspended,
+}: {
+  tenantId: number;
+  tenantName: string;
+  onClose: () => void;
+  onSuspended: () => void;
+}) {
+  const [subject, setSubject] = useState<string>("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function generate() {
+    if (!subject) {
+      setError("Pick a category first.");
+      return;
+    }
+    setDrafting(true);
+    setError(null);
+    try {
+      const r = await api<{ text: string }>(`/api/admin/tenants/${tenantId}/suspension/draft`, {
+        method: "POST",
+        body: JSON.stringify({ subject, reason: reason || null }),
+      });
+      // Generated notice replaces the textarea so the admin can tweak before sending.
+      setReason(r.text);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  async function submit() {
+    if (!subject) {
+      setError("Pick a category first.");
+      return;
+    }
+    if (!confirm(`Suspend "${tenantName}"? They'll be blocked immediately and can only reply to the support ticket.`)) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/admin/tenants/${tenantId}/suspend`, {
+        method: "POST",
+        body: JSON.stringify({ subject, reason: reason || null }),
+      });
+      onSuspended();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className="sm:max-w-lg"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>Suspend {tenantName}</DialogTitle>
+          <DialogDescription>
+            Blocks platform access immediately and opens a support ticket they can reply to.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Category</Label>
+            <Select value={subject} onValueChange={setSubject}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a reason category" />
+              </SelectTrigger>
+              <SelectContent>
+                {SUSPENSION_SUBJECTS.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <div className="flex items-center justify-between">
+              <Label>Notice to tenant (optional)</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={drafting || !subject}
+                onClick={generate}
+                title="Generate / rewrite a professional notice from the category + your notes"
+              >
+                {drafting ? "Generating…" : reason ? "Rewrite" : "Generate"}
+              </Button>
+            </div>
+            <textarea
+              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+              rows={5}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Short note (e.g. 'did not pay invoice') — then click Generate to expand it into a professional notice."
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Generation is template-based per category (no external AI key required).
+            </p>
+          </div>
+          {error && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" onClick={submit} disabled={busy || !subject}>
+            {busy ? "Suspending…" : "Suspend tenant"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

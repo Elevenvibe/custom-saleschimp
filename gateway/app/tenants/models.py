@@ -31,6 +31,13 @@ class Tenant(Base):
     auto_fallback_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # Suspension metadata (migration 0020). Holds the CURRENT suspension;
+    # cleared on unsuspend. Permanent history lives in the audit log.
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspended_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    suspension_subject: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    suspension_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    suspension_ticket_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -68,6 +68,27 @@ export async function api<T = unknown>(
   }
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
+  // Suspended tenants: the gateway middleware 403s non-allowlisted
+  // /api/tenant/* with detail.code === 'tenant_suspended'. Bounce the
+  // (top) window to the suspended page — which itself only calls the
+  // allowlisted suspension-info + tickets endpoints, so it won't loop.
+  if (
+    res.status === 403 &&
+    body?.detail?.code === "tenant_suspended" &&
+    typeof window !== "undefined"
+  ) {
+    const target = "/console/suspended";
+    if (!window.location.pathname.endsWith("/suspended")) {
+      // Full-screen takeover — break out of the Dograh iframe if embedded.
+      try {
+        const top = window.top;
+        if (top && top !== window.self) top.location.href = target;
+        else window.location.href = target;
+      } catch {
+        window.location.href = target;
+      }
+    }
+  }
   if (!res.ok) {
     throw new ApiError(res.status, body, _formatDetail(body?.detail) || res.statusText);
   }

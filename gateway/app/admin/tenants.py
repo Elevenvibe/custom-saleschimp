@@ -6,12 +6,20 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import datetime, timezone
+
 from app.audit.service import record_audit
 from app.auth.deps import require_super_admin
 from app.customer_auth.service import consume_pending_password, strip_pending_password
 from app.db import get_session
 from app.dograh_client import DograhClient, DograhError
 from app.tenants.models import Tenant, TenantMember
+from app.tenants.suspension import (
+    SUSPENSION_SUBJECTS,
+    draft_suspension_notice,
+    notify_best_effort,
+)
+from app.tickets.models import SupportTicket, SupportTicketMessage
 
 import structlog
 
@@ -35,6 +43,12 @@ class TenantOut(BaseModel):
     favicon_url: str | None = None
     concurrent_calls_limit: int | None = None
     auto_fallback_enabled: bool = False
+    # Suspension metadata (0020) — lets the admin tenant page show why/when
+    # and offer an Unsuspend action.
+    suspended_at: str | None = None
+    suspension_subject: str | None = None
+    suspension_reason: str | None = None
+    suspension_ticket_id: int | None = None
 
 
 class TenantCreateIn(BaseModel):
@@ -69,6 +83,10 @@ def _serialize(t: Tenant) -> TenantOut:
         favicon_url=t.favicon_url,
         concurrent_calls_limit=t.concurrent_calls_limit,
         auto_fallback_enabled=t.auto_fallback_enabled,
+        suspended_at=t.suspended_at.isoformat() if t.suspended_at else None,
+        suspension_subject=t.suspension_subject,
+        suspension_reason=t.suspension_reason,
+        suspension_ticket_id=t.suspension_ticket_id,
     )
 
 
@@ -286,6 +304,156 @@ async def update_tenant_status(
         payload={"from": prev, "to": body.status},
     )
     await session.commit()
+    return _serialize(tenant)
+
+
+# ---- Suspension workflow -------------------------------------------------
+
+
+class SuspendIn(BaseModel):
+    subject: str
+    reason: str | None = None
+
+
+class DraftIn(BaseModel):
+    subject: str
+    reason: str | None = None
+
+
+@router.post("/{tenant_id}/suspension/draft")
+async def draft_notice(
+    tenant_id: int,
+    body: DraftIn,
+    _claims: Annotated[dict, Depends(require_super_admin)],
+) -> dict:
+    """Generate a professional suspension notice from the category + note.
+    Template-based (no LLM dependency); see tenants/suspension.py."""
+    if body.subject not in SUSPENSION_SUBJECTS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown suspension subject")
+    return {"text": draft_suspension_notice(body.subject, body.reason)}
+
+
+@router.post("/{tenant_id}/suspend", response_model=TenantOut)
+async def suspend_tenant(
+    tenant_id: int,
+    body: SuspendIn,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TenantOut:
+    """Suspend a tenant: set status + metadata, open a linked support
+    ticket carrying the notice (so the tenant can reply from /suspended),
+    audit, and email a best-effort notice. Enforcement is immediate — the
+    suspension middleware blocks the tenant's next request."""
+    if body.subject not in SUSPENSION_SUBJECTS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown suspension subject")
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+
+    notice = draft_suspension_notice(body.subject, body.reason)
+    actor = _actor_id(claims)
+    now = datetime.now(timezone.utc)
+
+    # Open the suspension ticket so the tenant has a reply channel.
+    ticket = SupportTicket(
+        tenant_id=tenant.id,
+        subject=f"Account suspended: {body.subject}",
+        status="open",
+        priority="high",
+        category=body.subject,
+        created_by_email=claims.get("email") or "platform",
+        read_at=now,
+        assigned_to=actor,
+    )
+    session.add(ticket)
+    await session.flush()
+    session.add(
+        SupportTicketMessage(
+            ticket_id=ticket.id,
+            author_kind="platform",
+            author_email=claims.get("email") or "platform",
+            body=notice,
+        )
+    )
+
+    tenant.status = "suspended"
+    tenant.suspended_at = now
+    tenant.suspended_by = actor
+    tenant.suspension_subject = body.subject
+    tenant.suspension_reason = notice
+    tenant.suspension_ticket_id = ticket.id
+
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=actor,
+        action="admin.tenant.suspend",
+        target_kind="tenant",
+        target_id=str(tenant.id),
+        payload={"subject": body.subject, "ticket_id": ticket.id, "reason": body.reason},
+    )
+    await session.commit()
+    await notify_best_effort(
+        session,
+        to=[tenant.owner_email],
+        subject="Your account has been suspended",
+        body=notice,
+        tenant_id=tenant.id,
+    )
+    return _serialize(tenant)
+
+
+@router.post("/{tenant_id}/unsuspend", response_model=TenantOut)
+async def unsuspend_tenant(
+    tenant_id: int,
+    claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TenantOut:
+    """Restore access immediately + resolve the suspension ticket + notify."""
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+
+    ticket_id = tenant.suspension_ticket_id
+    prev_subject = tenant.suspension_subject
+
+    tenant.status = "active"
+    tenant.suspended_at = None
+    tenant.suspended_by = None
+    tenant.suspension_subject = None
+    tenant.suspension_reason = None
+    tenant.suspension_ticket_id = None
+
+    if ticket_id is not None:
+        ticket = await session.get(SupportTicket, ticket_id)
+        if ticket is not None:
+            session.add(
+                SupportTicketMessage(
+                    ticket_id=ticket.id,
+                    author_kind="platform",
+                    author_email=claims.get("email") or "platform",
+                    body="Your account has been reactivated. Access is restored — thank you.",
+                )
+            )
+            ticket.status = "resolved"
+
+    await record_audit(
+        session,
+        actor_kind="platform",
+        actor_user_id=_actor_id(claims),
+        action="admin.tenant.unsuspend",
+        target_kind="tenant",
+        target_id=str(tenant.id),
+        payload={"was_subject": prev_subject},
+    )
+    await session.commit()
+    await notify_best_effort(
+        session,
+        to=[tenant.owner_email],
+        subject="Your account has been reactivated",
+        body="Good news — your account suspension has been lifted and access is restored.",
+        tenant_id=tenant.id,
+    )
     return _serialize(tenant)
 
 
