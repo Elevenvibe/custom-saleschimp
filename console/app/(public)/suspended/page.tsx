@@ -133,7 +133,7 @@ export default function SuspendedPage() {
 
         {/* Support ticket thread */}
         {info?.ticket_id ? (
-          <SuspensionTicket ticketId={info.ticket_id} />
+          <SuspensionTicket ticketId={info.ticket_id} orgName={info.org_name} />
         ) : info ? (
           <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">
             No support ticket is linked to this suspension. Please contact support directly.
@@ -157,7 +157,9 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function SuspensionTicket({ ticketId }: { ticketId: number }) {
+const SUPPORT_SENDER = "SalesChimp Support";
+
+function SuspensionTicket({ ticketId, orgName }: { ticketId: number; orgName: string }) {
   const [detail, setDetail] = useState<TicketDetail | null>(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
@@ -205,7 +207,11 @@ function SuspensionTicket({ ticketId }: { ticketId: number }) {
             className={`rounded-md border p-3 ${m.author_kind === "platform" ? "bg-blue-50 border-blue-200" : "bg-muted/30"}`}
           >
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{m.author_kind === "platform" ? "Support team" : m.author_email}</span>
+              <span>
+                {m.author_kind === "platform"
+                  ? SUPPORT_SENDER
+                  : `${orgName || "Your organization"} · ${m.author_email}`}
+              </span>
               <span>{new Date(m.created_at).toLocaleString()}</span>
             </div>
             <div className="mt-1 whitespace-pre-wrap break-words text-sm">{m.body}</div>

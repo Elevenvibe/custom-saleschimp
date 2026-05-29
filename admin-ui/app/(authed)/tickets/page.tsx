@@ -61,6 +61,9 @@ import { HtmlBody } from "@/components/HtmlBody";
 type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
 type TicketPriority = "low" | "normal" | "high" | "urgent";
 
+// Super-admin replies are sent under the company name, not the staffer's.
+const SUPPORT_SENDER = "SalesChimp Support";
+
 type Ticket = {
   id: number;
   tenant_id: number;
@@ -635,7 +638,8 @@ function PreambleCard({
               ticket.unread ? "font-semibold text-foreground" : "text-muted-foreground"
             }`}
           >
-            {tenantName}
+            {/* Org name before the tenant ID, e.g. "Mmadu Inc - #16". */}
+            {tenantName} <span className="text-muted-foreground">- #{ticket.tenant_id}</span>
           </div>
           <div className="text-[10px] text-muted-foreground shrink-0">{timeStr}</div>
         </div>
@@ -820,8 +824,16 @@ function TicketDetailPane({
           >
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <div>
-                <strong>{m.author_email}</strong>
-                {m.author_kind === "platform" && " · Platform"}
+                {m.author_kind === "platform" ? (
+                  // Super-admin replies show as the company, not the staffer.
+                  <strong>{SUPPORT_SENDER}</strong>
+                ) : (
+                  // Tenant replies show the org + the person who sent it.
+                  <>
+                    <strong>{tenantName ?? "Organization"}</strong>
+                    <span className="ml-1">· {m.author_email}</span>
+                  </>
+                )}
               </div>
               <div>{new Date(m.created_at).toLocaleString()}</div>
             </div>

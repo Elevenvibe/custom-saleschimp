@@ -45,6 +45,9 @@ type TicketMessage = {
 
 type TicketDetail = { ticket: Ticket; messages: TicketMessage[] };
 
+// Super-admin replies arrive under the company name, not a staffer.
+const SUPPORT_SENDER = "SalesChimp Support";
+
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +56,14 @@ export default function TicketsPage() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<TicketStatus | "all">("all");
+  // Our own org name, so our (tenant) messages render as "Org · person".
+  const [orgName, setOrgName] = useState<string>("");
+
+  useEffect(() => {
+    api<{ tenant: { name: string } }>("/api/tenant/me")
+      .then((m) => setOrgName(m.tenant?.name ?? ""))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(qInput.trim().toLowerCase()), 250);
@@ -138,7 +149,7 @@ export default function TicketsPage() {
         {selectedId == null ? (
           <EmptyDetail />
         ) : (
-          <TicketDetailPane ticketId={selectedId} onChanged={reload} />
+          <TicketDetailPane ticketId={selectedId} orgName={orgName} onChanged={reload} />
         )}
       </div>
 
@@ -213,9 +224,11 @@ function EmptyDetail() {
 
 function TicketDetailPane({
   ticketId,
+  orgName,
   onChanged,
 }: {
   ticketId: number;
+  orgName: string;
   onChanged: () => void;
 }) {
   const [detail, setDetail] = useState<TicketDetail | null>(null);
@@ -276,8 +289,14 @@ function TicketDetailPane({
           >
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <div>
-                <strong>{m.author_email}</strong>
-                {m.author_kind === "platform" && " · Platform"}
+                {m.author_kind === "platform" ? (
+                  <strong>{SUPPORT_SENDER}</strong>
+                ) : (
+                  <>
+                    <strong>{orgName || "Your organization"}</strong>
+                    <span className="ml-1">· {m.author_email}</span>
+                  </>
+                )}
               </div>
               <div>{new Date(m.created_at).toLocaleString()}</div>
             </div>
