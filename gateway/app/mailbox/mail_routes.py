@@ -228,6 +228,53 @@ async def admin_send_mail(
     return _serialize(row)
 
 
+class MailActionIn(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=500)
+    action: Literal["delete", "mark_read", "mark_unread"]
+
+
+async def _apply_mail_action(
+    session: AsyncSession,
+    scope_kind: Literal["platform", "tenant"],
+    scope_id: int | None,
+    body: MailActionIn,
+) -> dict:
+    """Bulk delete / mark-read / mark-unread, scoped so a caller can only
+    touch their own mailbox's rows. Returns {affected: n}."""
+    rows = (
+        await session.execute(
+            select(MailMessage).where(
+                MailMessage.id.in_(body.ids),
+                MailMessage.scope_kind == scope_kind,
+                MailMessage.scope_id == scope_id,
+            )
+        )
+    ).scalars().all()
+    affected = 0
+    for m in rows:
+        if body.action == "delete":
+            await session.delete(m)
+            affected += 1
+        elif body.action == "mark_read":
+            if m.read_at is None:
+                m.read_at = _now()
+            affected += 1
+        elif body.action == "mark_unread":
+            m.read_at = None
+            affected += 1
+    await session.commit()
+    return {"affected": affected}
+
+
+@admin_router.post("/actions")
+async def admin_mail_actions(
+    body: MailActionIn,
+    _claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    return await _apply_mail_action(session, "platform", None, body)
+
+
 # ---- tenant scope -----------------------------------------------------
 
 tenant_router = APIRouter(prefix="/mail", tags=["tenant:mail"])

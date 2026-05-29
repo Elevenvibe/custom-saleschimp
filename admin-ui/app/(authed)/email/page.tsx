@@ -60,12 +60,15 @@ import {
   Filter,
   Inbox,
   Mail,
+  MailOpen,
   PenSquare,
   Search,
   Send,
   Settings as SettingsIcon,
   ShieldAlert,
   Tag,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useRef } from "react";
 
@@ -184,6 +187,51 @@ export default function EmailPage() {
   const configured = mailbox?.imap_active || mailbox?.smtp_active;
   const unreadCount = (messages ?? []).filter((m) => m.unread).length;
   const currentFolder = FOLDERS.find((f) => f.value === folder)!;
+
+  // ----- Multi-select + bulk actions (delete / mark read / mark unread) ----
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+  // Clear selection whenever the visible set changes (folder/filter/search).
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [folder, unreadFilter, receivedFrom, receivedTo, q]);
+
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((m) => selectedIds.has(m.id));
+
+  async function runAction(
+    action: "delete" | "mark_read" | "mark_unread",
+    ids: number[],
+  ) {
+    if (ids.length === 0) return;
+    if (action === "delete" && !confirm(`Delete ${ids.length} message${ids.length > 1 ? "s" : ""}?`)) {
+      return;
+    }
+    setError(null);
+    try {
+      await api("/api/admin/mail/actions", {
+        method: "POST",
+        body: JSON.stringify({ ids, action }),
+      });
+      if (action === "delete" && selectedId != null && ids.includes(selectedId)) {
+        setSelectedId(null);
+      }
+      clearSelection();
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   return (
     <>
@@ -346,6 +394,63 @@ export default function EmailPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          {/* Select-all + bulk actions (delete / mark read / mark unread). */}
+          <div className="flex items-center gap-1 border-b px-3 py-1.5 text-xs">
+            <input
+              type="checkbox"
+              aria-label="Select all"
+              className="size-3.5 cursor-pointer accent-primary"
+              checked={allVisibleSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = selectedIds.size > 0 && !allVisibleSelected;
+              }}
+              onChange={(e) => {
+                if (e.target.checked) setSelectedIds(new Set(filtered.map((m) => m.id)));
+                else clearSelection();
+              }}
+            />
+            {selectedIds.size === 0 ? (
+              <span className="ml-1 text-muted-foreground">Select</span>
+            ) : (
+              <div className="ml-1 flex items-center gap-0.5">
+                <span className="mr-1 text-muted-foreground">{selectedIds.size} selected</span>
+                <button
+                  type="button"
+                  title="Mark read"
+                  className="rounded p-1 hover:bg-muted"
+                  onClick={() => runAction("mark_read", [...selectedIds])}
+                >
+                  <MailOpen className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title="Mark unread"
+                  className="rounded p-1 hover:bg-muted"
+                  onClick={() => runAction("mark_unread", [...selectedIds])}
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title="Delete"
+                  className="rounded p-1 text-destructive hover:bg-destructive/10"
+                  onClick={() => runAction("delete", [...selectedIds])}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title="Clear selection"
+                  className="rounded p-1 hover:bg-muted"
+                  onClick={clearSelection}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex-1 overflow-y-auto">
             {!messages ? (
               <div className="p-4 text-xs text-muted-foreground">Loading…</div>
@@ -367,6 +472,8 @@ export default function EmailPage() {
                   key={m.id}
                   message={m}
                   active={selectedId === m.id}
+                  selected={selectedIds.has(m.id)}
+                  onToggleSelect={() => toggleSelect(m.id)}
                   onClick={() => setSelectedId(m.id)}
                 />
               ))
@@ -374,12 +481,19 @@ export default function EmailPage() {
           </div>
         </div>
 
-        {/* Right pane */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Right pane — min-w-0 lets this flex child shrink so a wide email
+            body wraps/scrolls WITHIN the pane instead of pushing the whole
+            page wider (the reported overlap). overflow-hidden clips any
+            stray wide child; HtmlBody itself also clamps content. */}
+        <div className="flex-1 min-w-0 overflow-y-auto">
           {selectedId == null ? (
             <EmptyDetail configured={!!configured} />
           ) : (
-            <MailDetailPane id={selectedId} onChanged={reload} />
+            <MailDetailPane
+              id={selectedId}
+              onChanged={reload}
+              onAction={(action) => runAction(action, [selectedId])}
+            />
           )}
         </div>
       </div>
@@ -408,10 +522,14 @@ export default function EmailPage() {
 function PreambleCard({
   message,
   active,
+  selected,
+  onToggleSelect,
   onClick,
 }: {
   message: MailMessage;
   active: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onClick: () => void;
 }) {
   const t = new Date(message.received_at);
@@ -423,37 +541,46 @@ function PreambleCard({
     message.direction === "outbound"
       ? `→ ${message.to_emails[0] ?? "—"}`
       : message.from_name || message.from_email;
+  // Row is a flex (checkbox + button) rather than a single <button> so the
+  // multi-select checkbox isn't nested inside a button (invalid HTML).
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full border-b px-3 py-2 text-left text-xs transition hover:bg-muted/40 ${
-        active ? "bg-primary/5" : ""
+    <div
+      className={`flex items-start gap-2 border-b px-3 py-2 transition hover:bg-muted/40 ${
+        selected ? "bg-primary/10" : active ? "bg-primary/5" : ""
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div
-          className={`truncate ${
-            message.unread ? "font-semibold text-foreground" : "text-muted-foreground"
-          }`}
-        >
-          {who}
+      <input
+        type="checkbox"
+        aria-label="Select message"
+        className="mt-1 size-3.5 shrink-0 cursor-pointer accent-primary"
+        checked={selected}
+        onChange={onToggleSelect}
+      />
+      <button type="button" onClick={onClick} className="min-w-0 flex-1 text-left text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <div
+            className={`truncate ${
+              message.unread ? "font-semibold text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            {who}
+          </div>
+          <div className="text-[10px] text-muted-foreground shrink-0">{timeStr}</div>
         </div>
-        <div className="text-[10px] text-muted-foreground shrink-0">{timeStr}</div>
-      </div>
-      <div className="mt-0.5 flex items-center gap-2">
-        {message.unread && (
-          <span className="inline-block size-1.5 rounded-full bg-blue-500" />
-        )}
-        <div
-          className={`truncate text-sm ${
-            message.unread ? "font-semibold text-foreground" : "text-foreground/80"
-          }`}
-        >
-          {message.subject || "(no subject)"}
+        <div className="mt-0.5 flex items-center gap-2">
+          {message.unread && (
+            <span className="inline-block size-1.5 shrink-0 rounded-full bg-blue-500" />
+          )}
+          <div
+            className={`truncate text-sm ${
+              message.unread ? "font-semibold text-foreground" : "text-foreground/80"
+            }`}
+          >
+            {message.subject || "(no subject)"}
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -499,7 +626,15 @@ function EmptyDetail({ configured }: { configured: boolean }) {
   );
 }
 
-function MailDetailPane({ id, onChanged }: { id: number; onChanged: () => void }) {
+function MailDetailPane({
+  id,
+  onChanged,
+  onAction,
+}: {
+  id: number;
+  onChanged: () => void;
+  onAction: (action: "delete" | "mark_read" | "mark_unread") => void;
+}) {
   const [m, setM] = useState<MailMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState("");
@@ -553,7 +688,32 @@ function MailDetailPane({ id, onChanged }: { id: number; onChanged: () => void }
   return (
     <div className="p-6 space-y-5">
       <div className="border-b pb-4">
-        <h2 className="text-xl font-semibold">{m.subject || "(no subject)"}</h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="min-w-0 break-words text-xl font-semibold">
+            {m.subject || "(no subject)"}
+          </h2>
+          {/* Per-message read/unread + delete actions. */}
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title={m.read_at ? "Mark as unread" : "Mark as read"}
+              onClick={() => onAction(m.read_at ? "mark_unread" : "mark_read")}
+            >
+              {m.read_at ? <Mail className="h-4 w-4" /> : <MailOpen className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:bg-destructive/10"
+              title="Delete"
+              onClick={() => onAction("delete")}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
         <div className="mt-2 grid grid-cols-2 gap-y-1 gap-x-6 text-xs text-muted-foreground sm:grid-cols-3">
           <Meta label="From" value={m.from_name ? `${m.from_name} <${m.from_email}>` : m.from_email} />
           <Meta label="To" value={m.to_emails.join(", ") || "—"} />
@@ -562,7 +722,8 @@ function MailDetailPane({ id, onChanged }: { id: number; onChanged: () => void }
         </div>
       </div>
 
-      <div className="rounded-md border bg-card p-4">
+      {/* overflow-hidden + min-w-0 so a wide body never escapes the card. */}
+      <div className="min-w-0 overflow-hidden rounded-md border bg-card p-4">
         {m.body_text ? (
           <HtmlBody html={m.body_text} />
         ) : (
@@ -700,9 +861,9 @@ function ComposeDialog({
 
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-[10px] uppercase tracking-wide">{label}</div>
-      <div className="mt-0.5 text-sm text-foreground">{value}</div>
+      <div className="mt-0.5 break-words text-sm text-foreground">{value}</div>
     </div>
   );
 }

@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Filter, Mail, Plus, Search } from "lucide-react";
+import { Filter, Mail, MailOpen, Plus, Search, Trash2, X } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
@@ -147,6 +147,50 @@ export default function TicketsPage() {
   }, []);
 
   const unreadCount = (tickets ?? []).filter((t) => t.unread).length;
+
+  // ----- Multi-select + bulk actions (delete / mark read / mark unread) ----
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [qs]);
+  const visible = tickets ?? [];
+  const allVisibleSelected =
+    visible.length > 0 && visible.every((t) => selectedIds.has(t.id));
+  async function runAction(
+    action: "delete" | "mark_read" | "mark_unread",
+    ids: number[],
+  ) {
+    if (ids.length === 0) return;
+    if (action === "delete" && !confirm(`Delete ${ids.length} ticket${ids.length > 1 ? "s" : ""}? This also removes their messages.`)) {
+      return;
+    }
+    setError(null);
+    try {
+      await api("/api/admin/tickets/actions", {
+        method: "POST",
+        body: JSON.stringify({ ids, action }),
+      });
+      if (action === "delete" && selectedId != null && ids.includes(selectedId)) {
+        setSelectedId(null);
+      }
+      clearSelection();
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   // Funnel popover open-state + create-ticket dialog open-state. Date
   // inputs (createdFrom/createdTo) are declared above qs because qs's
   // deps array references them.
@@ -332,6 +376,42 @@ export default function TicketsPage() {
             </div>
           </div>
 
+          {/* Select-all + bulk actions (delete / mark read / mark unread). */}
+          <div className="flex items-center gap-1 border-b px-3 py-1.5 text-xs">
+            <input
+              type="checkbox"
+              aria-label="Select all"
+              className="size-3.5 cursor-pointer accent-primary"
+              checked={allVisibleSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = selectedIds.size > 0 && !allVisibleSelected;
+              }}
+              onChange={(e) => {
+                if (e.target.checked) setSelectedIds(new Set(visible.map((t) => t.id)));
+                else clearSelection();
+              }}
+            />
+            {selectedIds.size === 0 ? (
+              <span className="ml-1 text-muted-foreground">Select</span>
+            ) : (
+              <div className="ml-1 flex items-center gap-0.5">
+                <span className="mr-1 text-muted-foreground">{selectedIds.size} selected</span>
+                <button type="button" title="Mark read" className="rounded p-1 hover:bg-muted" onClick={() => runAction("mark_read", [...selectedIds])}>
+                  <MailOpen className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" title="Mark unread" className="rounded p-1 hover:bg-muted" onClick={() => runAction("mark_unread", [...selectedIds])}>
+                  <Mail className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" title="Delete" className="rounded p-1 text-destructive hover:bg-destructive/10" onClick={() => runAction("delete", [...selectedIds])}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" title="Clear selection" className="rounded p-1 hover:bg-muted" onClick={clearSelection}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Preamble list */}
           <div className="flex-1 overflow-y-auto">
             {!tickets ? (
@@ -347,6 +427,8 @@ export default function TicketsPage() {
                   ticket={t}
                   tenantName={tenants.get(t.tenant_id)?.name ?? `Tenant #${t.tenant_id}`}
                   active={selectedId === t.id}
+                  selected={selectedIds.has(t.id)}
+                  onToggleSelect={() => toggleSelect(t.id)}
                   onClick={() => setSelectedId(t.id)}
                 />
               ))
@@ -354,8 +436,9 @@ export default function TicketsPage() {
           </div>
         </div>
 
-        {/* Right pane: detail + thread */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Right pane: detail + thread. min-w-0 so wide message bodies wrap
+            within the pane instead of pushing the page wider. */}
+        <div className="flex-1 min-w-0 overflow-y-auto">
           {selectedId == null ? (
             <EmptyDetail />
           ) : (
@@ -367,6 +450,7 @@ export default function TicketsPage() {
                   : undefined
               }
               onChanged={reload}
+              onAction={(action) => runAction(action, [selectedId])}
             />
           )}
         </div>
@@ -513,11 +597,15 @@ function PreambleCard({
   ticket,
   tenantName,
   active,
+  selected,
+  onToggleSelect,
   onClick,
 }: {
   ticket: Ticket;
   tenantName: string;
   active: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onClick: () => void;
 }) {
   // Format: tenant top-left, time top-right, subject below — matches the
@@ -528,39 +616,46 @@ function PreambleCard({
     ? t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : t.toLocaleDateString();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full border-b px-3 py-2 text-left text-xs transition hover:bg-muted/40 ${
-        active ? "bg-primary/5" : ""
+    <div
+      className={`flex items-start gap-2 border-b px-3 py-2 transition hover:bg-muted/40 ${
+        selected ? "bg-primary/10" : active ? "bg-primary/5" : ""
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div
-          className={`truncate ${
-            ticket.unread ? "font-semibold text-foreground" : "text-muted-foreground"
-          }`}
-        >
-          {tenantName}
+      <input
+        type="checkbox"
+        aria-label="Select ticket"
+        className="mt-1 size-3.5 shrink-0 cursor-pointer accent-primary"
+        checked={selected}
+        onChange={onToggleSelect}
+      />
+      <button type="button" onClick={onClick} className="min-w-0 flex-1 text-left text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <div
+            className={`truncate ${
+              ticket.unread ? "font-semibold text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            {tenantName}
+          </div>
+          <div className="text-[10px] text-muted-foreground shrink-0">{timeStr}</div>
         </div>
-        <div className="text-[10px] text-muted-foreground shrink-0">{timeStr}</div>
-      </div>
-      <div className="mt-0.5 flex items-center gap-2">
-        {ticket.unread && (
-          <span
-            className="inline-block size-1.5 rounded-full bg-blue-500"
-            aria-label="unread"
-          />
-        )}
-        <div
-          className={`truncate text-sm ${
-            ticket.unread ? "font-semibold text-foreground" : "text-foreground/80"
-          }`}
-        >
-          {ticket.subject}
+        <div className="mt-0.5 flex items-center gap-2">
+          {ticket.unread && (
+            <span
+              className="inline-block size-1.5 shrink-0 rounded-full bg-blue-500"
+              aria-label="unread"
+            />
+          )}
+          <div
+            className={`truncate text-sm ${
+              ticket.unread ? "font-semibold text-foreground" : "text-foreground/80"
+            }`}
+          >
+            {ticket.subject}
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -579,10 +674,12 @@ function TicketDetailPane({
   ticketId,
   tenantName,
   onChanged,
+  onAction,
 }: {
   ticketId: number;
   tenantName?: string;
   onChanged: () => void;
+  onAction: (action: "delete" | "mark_read" | "mark_unread") => void;
 }) {
   const [detail, setDetail] = useState<TicketDetail | null>(null);
   const [reply, setReply] = useState("");
@@ -662,7 +759,30 @@ function TicketDetailPane({
     <div className="p-6 space-y-5">
       {/* Subject + meta block */}
       <div className="border-b pb-4">
-        <h2 className="text-xl font-semibold">{ticket.subject}</h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="min-w-0 break-words text-xl font-semibold">{ticket.subject}</h2>
+          {/* Per-ticket read/unread + delete actions. */}
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title={ticket.unread ? "Mark as read" : "Mark as unread"}
+              onClick={() => onAction(ticket.unread ? "mark_read" : "mark_unread")}
+            >
+              {ticket.unread ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:bg-destructive/10"
+              title="Delete ticket"
+              onClick={() => onAction("delete")}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
         <div className="mt-3 grid grid-cols-2 gap-y-2 gap-x-6 text-xs text-muted-foreground sm:grid-cols-3">
           <Meta label="Tenant" value={tenantName ?? `#${ticket.tenant_id}`} />
           <Meta label="Created by" value={ticket.created_by_email} />
@@ -740,9 +860,9 @@ function TicketDetailPane({
 
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-[10px] uppercase tracking-wide">{label}</div>
-      <div className="mt-0.5 text-sm text-foreground">{value}</div>
+      <div className="mt-0.5 break-words text-sm text-foreground">{value}</div>
     </div>
   );
 }

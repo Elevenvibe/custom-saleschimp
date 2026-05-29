@@ -403,6 +403,39 @@ async def admin_get_ticket(
     return out
 
 
+class TicketActionIn(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=500)
+    action: Literal["delete", "mark_read", "mark_unread"]
+
+
+@admin_router.post("/actions")
+async def admin_ticket_actions(
+    body: TicketActionIn,
+    _claims: Annotated[dict, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Bulk delete / mark-read / mark-unread for tickets. Delete cascades
+    to support_ticket_messages via the FK. Returns {affected: n}."""
+    rows = (
+        await session.execute(
+            select(SupportTicket).where(SupportTicket.id.in_(body.ids))
+        )
+    ).scalars().all()
+    affected = 0
+    for t in rows:
+        if body.action == "delete":
+            await session.delete(t)
+            affected += 1
+        elif body.action == "mark_read":
+            t.read_at = _now()
+            affected += 1
+        elif body.action == "mark_unread":
+            t.read_at = None
+            affected += 1
+    await session.commit()
+    return {"affected": affected}
+
+
 @admin_router.post(
     "/{ticket_id}/reply", response_model=TicketMessageOut, status_code=status.HTTP_201_CREATED
 )
