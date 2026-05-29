@@ -784,7 +784,10 @@ function TicketDetailPane({
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-y-2 gap-x-6 text-xs text-muted-foreground sm:grid-cols-3">
-          <Meta label="Tenant" value={tenantName ?? `#${ticket.tenant_id}`} />
+          <Meta
+            label="Tenant"
+            value={tenantName ? `${tenantName} - #${ticket.tenant_id}` : `#${ticket.tenant_id}`}
+          />
           <Meta label="Created by" value={ticket.created_by_email} />
           <Meta label="Status" value={<StatusBadge status={ticket.status} />} />
           <Meta label="Priority" value={<PriorityBadge priority={ticket.priority} />} />
