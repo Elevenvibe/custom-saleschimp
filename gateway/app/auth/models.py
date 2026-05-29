@@ -1,11 +1,13 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -28,6 +30,34 @@ class PlatformUser(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Profile fields (migration 0022).
+    first_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    profile_picture_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    mobile: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    language: Mapped[str] = mapped_column(String(10), nullable=False, server_default="en")
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    slack_member_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    marital_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    zip_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    about: Mapped[str | None] = mapped_column(Text, nullable=True)
+    receive_email_notifications: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    google_calendar_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    # Pending email change (verification).
+    pending_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_change_code: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    email_change_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

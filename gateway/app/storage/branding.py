@@ -182,3 +182,42 @@ async def upload_branding(
 
     base = settings.minio_public_endpoint.rstrip("/")
     return f"{base}/{settings.minio_branding_bucket}/{key}"
+
+
+async def upload_avatar(
+    *,
+    scope: str,
+    scope_id: int,
+    data: bytes,
+    content_type: str,
+    filename: str | None,
+) -> str:
+    """Upload a profile picture, reusing the branding bucket + public-read
+    policy. `scope` namespaces the key (e.g. 'platform-users', 'members').
+    Same validation as branding."""
+    if len(data) == 0:
+        raise StorageError("uploaded file is empty")
+    if len(data) > MAX_BYTES:
+        raise StorageError(f"file is too large ({len(data)} bytes, max {MAX_BYTES})")
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise StorageError(f"unsupported content type: {content_type}")
+
+    await _ensure_bucket()
+
+    import time
+
+    ts = int(time.time() * 1000)
+    ext = _safe_extension(content_type, filename)
+    key = f"{scope}/{scope_id}/avatar-{ts}{ext}"
+
+    async with _client() as s3:
+        await s3.put_object(
+            Bucket=settings.minio_branding_bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            CacheControl="public, max-age=31536000, immutable",
+        )
+
+    base = settings.minio_public_endpoint.rstrip("/")
+    return f"{base}/{settings.minio_branding_bucket}/{key}"
