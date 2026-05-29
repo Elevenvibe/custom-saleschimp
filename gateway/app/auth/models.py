@@ -11,6 +11,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -59,6 +60,28 @@ class PlatformUser(Base):
     email_change_code: Mapped[str | None] = mapped_column(String(12), nullable=True)
     email_change_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Two-factor auth (migration 0023). Secrets are Fernet-encrypted JSONB.
+    totp_secret_enc: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    totp_pending_enc: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    email_2fa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    login_2fa_code: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    login_2fa_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class PlatformSetting(Base):
+    """Generic singleton key→JSONB settings store (reCAPTCHA today; reusable
+    for future settings chunks)."""
+
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 

@@ -10,29 +10,46 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 2FA second step.
+  const [stage, setStage] = useState<"credentials" | "code">("credentials");
+  const [methods, setMethods] = useState<string[]>([]);
+  const [code, setCode] = useState("");
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function attempt(withCode?: string) {
     setError(null);
     setBusy(true);
     try {
       const body: LoginIn = { email, password };
+      if (withCode) body.code = withCode;
       const r = await api<LoginOut>("/api/auth/super-admin/login", {
         method: "POST",
         body: JSON.stringify(body),
         auth: false,
       });
-      setToken(r.access_token);
-      router.replace("/dashboard");
+      if (r.requires_2fa) {
+        setMethods(r.methods ?? []);
+        setStage("code");
+        return;
+      }
+      if (r.access_token) {
+        setToken(r.access_token);
+        router.replace("/dashboard");
+      }
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.status === 401 ? "Invalid credentials" : err.message);
+        setError(err.status === 401 ? (stage === "code" ? "Invalid or expired code" : "Invalid credentials") : err.message);
       } else {
         setError("Login failed");
       }
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (stage === "credentials") await attempt();
+    else await attempt(code);
   }
 
   return (
@@ -63,15 +80,50 @@ export default function LoginPage() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            disabled={stage === "code"}
             required
           />
         </div>
+        {stage === "code" && (
+          <div>
+            <label className="label" htmlFor="code">
+              Verification code
+            </label>
+            <input
+              id="code"
+              className="input"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="6-digit code"
+              autoFocus
+              required
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              {methods.includes("totp") && methods.includes("email")
+                ? "Enter the code from your authenticator app or the one emailed to you."
+                : methods.includes("totp")
+                  ? "Enter the code from your authenticator app."
+                  : "Enter the code we emailed you."}
+            </p>
+          </div>
+        )}
         {error && (
           <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
         <button type="submit" className="btn-primary w-full" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? "Signing in…" : stage === "code" ? "Verify & sign in" : "Sign in"}
         </button>
+        {stage === "code" && (
+          <button
+            type="button"
+            className="w-full text-center text-xs text-slate-500 hover:underline"
+            onClick={() => { setStage("credentials"); setCode(""); setError(null); }}
+          >
+            Back
+          </button>
+        )}
       </form>
     </div>
   );

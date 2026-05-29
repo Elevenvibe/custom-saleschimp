@@ -69,8 +69,15 @@ function _formatDetail(detail: unknown): string | null {
 
 // --- Typed surfaces ---
 
-export type LoginIn = { email: string; password: string };
-export type LoginOut = { access_token: string; token_type: string; expires_in: number; role: string };
+export type LoginIn = { email: string; password: string; code?: string };
+export type LoginOut = {
+  requires_2fa?: boolean;
+  methods?: string[];
+  access_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  role?: string;
+};
 
 export type AuditRow = {
   id: number;
