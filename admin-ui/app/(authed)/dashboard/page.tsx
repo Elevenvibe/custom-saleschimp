@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type Dashboard } from "@/lib/api";
 import { PageDescription, PageHeader } from "@/components/PageHeader";
+import { UpdateCheckerCard } from "@/components/UpdateCheckerCard";
 
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -17,6 +18,9 @@ export default function DashboardPage() {
       <PageHeader title="Dashboard" />
       <div className="p-8 space-y-6">
         <PageDescription>Platform-wide snapshot</PageDescription>
+        {/* Relocated update-checker — only renders for super-admins holding
+            the update_checker permission. */}
+        <UpdateCheckerCard />
         {error && (
           <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}

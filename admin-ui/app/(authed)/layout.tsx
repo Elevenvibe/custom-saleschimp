@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SupportWidget } from "@/components/SupportWidget";
 import { getToken } from "@/lib/api";
 
 export default function AuthedLayout({ children }: { children: React.ReactNode }) {
@@ -27,6 +28,9 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>{children}</SidebarInset>
+      {/* Relocated support widget — only mounts for super-admins holding
+          the support_widget permission (no-op otherwise / if unconfigured). */}
+      <SupportWidget />
     </SidebarProvider>
   );
 }

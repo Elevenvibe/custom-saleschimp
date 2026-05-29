@@ -5,7 +5,7 @@ Add new model modules here whenever a new domain is introduced.
 """
 
 from app.audit.models import AuditLog
-from app.auth.models import PlatformUser
+from app.auth.models import PlatformUser, SuperAdminPermission
 from app.billing.models import CostProvider, CostProviderPrice, MarkupRule
 from app.email.models import EmailProviderConfig
 from app.packages.models import Package, PackagePlugin
@@ -30,6 +30,7 @@ from app.wallet.models import (
 __all__ = [
     "AuditLog",
     "PlatformUser",
+    "SuperAdminPermission",
     "EmailProviderConfig",
     "Tenant",
     "TenantMember",
