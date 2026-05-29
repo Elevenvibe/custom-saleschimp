@@ -22,6 +22,7 @@ from app.admin.notifications import router as notifications_router
 from app.admin.notification_settings import router as notification_settings_router
 from app.admin.profile import router as profile_router
 from app.admin.security import router as security_router
+from app.admin.storage_settings import router as storage_settings_router
 from app.mailbox.mail_routes import admin_router as mail_admin_router
 from app.mailbox.routes import admin_router as mailbox_admin_router
 from app.tickets.routes import admin_router as tickets_admin_router
@@ -53,3 +54,4 @@ router.include_router(profile_router)
 router.include_router(security_router)
 router.include_router(notifications_router)
 router.include_router(notification_settings_router)
+router.include_router(storage_settings_router)
