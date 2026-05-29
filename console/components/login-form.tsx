@@ -17,7 +17,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { api, ApiError, type LoginOut, setToken } from "@/lib/api";
+import { useRef } from "react";
+
+import { api, ApiError, GATEWAY, type LoginOut, setToken } from "@/lib/api";
+import { Recaptcha, type RecaptchaHandle } from "@/components/Recaptcha";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,15 +41,17 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recaptchaRef = useRef<RecaptchaHandle>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      const recaptcha_token = (await recaptchaRef.current?.execute()) ?? undefined;
       const r = await api<LoginOut>("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, recaptcha_token }),
         auth: false,
       });
       setToken(r.access_token);
@@ -98,6 +103,7 @@ export function LoginForm({
                   required
                 />
               </Field>
+              <Recaptcha ref={recaptchaRef} gateway={GATEWAY} action="login" />
               {error && (
                 <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {error}

@@ -15,6 +15,7 @@ from app.auth.service import (
     issue_super_admin_token,
     verify_password,
 )
+from app.auth.recaptcha import public_config as recaptcha_public_config, verify_recaptcha
 from app.db import get_session
 from app.email.crypto import decrypt_dict
 from app.tenants.suspension import notify_best_effort
@@ -24,6 +25,15 @@ log = structlog.get_logger()
 router = APIRouter(tags=["auth"])
 
 _EMAIL_2FA_TTL_MINUTES = 10
+
+
+@router.get("/recaptcha-config")
+async def recaptcha_config(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Public: lets login/signup pages render the reCAPTCHA widget. Returns
+    only enabled/version/site_key — never the secret."""
+    return await recaptcha_public_config(session)
 
 
 def _totp_secret(user) -> str | None:
@@ -41,6 +51,10 @@ async def super_admin_login(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> LoginResultOut:
+    # reCAPTCHA gate (no-op unless enabled in Settings → Security). Skip on
+    # the 2FA second step — the first step already passed it.
+    if not body.code:
+        await verify_recaptcha(session, body.recaptcha_token, remote_ip=request.client.host if request.client else None)
     user = await find_platform_user_by_email(session, body.email)
     if user is None or not verify_password(body.password, user.password_hash):
         # Audit the attempt without leaking which half failed.

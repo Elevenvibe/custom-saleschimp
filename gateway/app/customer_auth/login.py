@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.service import record_audit
+from app.auth.recaptcha import verify_recaptcha
 from app.auth.service import issue_customer_token
 from app.config import settings
 from app.db import get_session
@@ -33,6 +34,7 @@ router = APIRouter(tags=["customer-auth:login"])
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+    recaptcha_token: str | None = None
 
 
 class LoginOut(BaseModel):
@@ -49,6 +51,9 @@ async def login(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> LoginOut:
+    await verify_recaptcha(
+        session, body.recaptcha_token, remote_ip=request.client.host if request.client else None
+    )
     client = DograhClient()
     try:
         dograh_user = await client.login(email=body.email, password=body.password)

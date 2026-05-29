@@ -69,7 +69,7 @@ function _formatDetail(detail: unknown): string | null {
 
 // --- Typed surfaces ---
 
-export type LoginIn = { email: string; password: string; code?: string };
+export type LoginIn = { email: string; password: string; code?: string; recaptcha_token?: string };
 export type LoginOut = {
   requires_2fa?: boolean;
   methods?: string[];

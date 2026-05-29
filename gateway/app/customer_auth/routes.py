@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.service import record_audit
+from app.auth.recaptcha import verify_recaptcha
 from app.auth.service import issue_customer_token
 from app.auth.tokens import InvalidToken, TokenExpired, verify as verify_token
 from app.config import settings
@@ -36,6 +37,9 @@ async def signup(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SignupOut:
+    await verify_recaptcha(
+        session, body.recaptcha_token, remote_ip=request.client.host if request.client else None
+    )
     # Lower-case the email everywhere for case-insensitive uniqueness.
     email = body.email.lower()
 

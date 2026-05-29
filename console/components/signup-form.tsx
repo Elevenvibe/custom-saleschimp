@@ -14,7 +14,10 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { api, ApiError } from "@/lib/api";
+import { useRef } from "react";
+
+import { api, ApiError, GATEWAY } from "@/lib/api";
+import { Recaptcha, type RecaptchaHandle } from "@/components/Recaptcha";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,6 +51,7 @@ export function SignupForm({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recaptchaRef = useRef<RecaptchaHandle>(null);
 
   function set<K extends keyof SignupFields>(k: K, v: SignupFields[K]) {
     setForm((s) => ({ ...s, [k]: v }));
@@ -66,6 +70,7 @@ export function SignupForm({
     setBusy(true);
     setError(null);
     try {
+      const recaptcha_token = (await recaptchaRef.current?.execute()) ?? undefined;
       // The gateway expects snake_case fields. Confirm_password is a UI-only
       // check; we don't send it.
       await api("/api/auth/signup", {
@@ -75,6 +80,7 @@ export function SignupForm({
           email: form.email,
           password: form.password,
           company_name: form.company_name,
+          recaptcha_token,
         }),
         auth: false,
       });
@@ -190,6 +196,7 @@ export function SignupForm({
                   Must be at least 8 characters.
                 </FieldDescription>
               </Field>
+              <Recaptcha ref={recaptchaRef} gateway={GATEWAY} action="signup" />
               {error && (
                 <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {error}

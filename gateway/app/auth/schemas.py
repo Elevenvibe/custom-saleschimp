@@ -6,6 +6,8 @@ class LoginIn(BaseModel):
     password: str
     # Optional 2FA code (TOTP or email). Absent on the first step.
     code: str | None = None
+    # reCAPTCHA token (only required when reCAPTCHA is enabled in settings).
+    recaptcha_token: str | None = None
 
 
 class LoginOut(BaseModel):

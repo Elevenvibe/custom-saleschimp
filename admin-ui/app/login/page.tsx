@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError, setToken, type LoginIn, type LoginOut } from "@/lib/api";
+import { api, ApiError, GATEWAY, setToken, type LoginIn, type LoginOut } from "@/lib/api";
+import { Recaptcha, type RecaptchaHandle } from "@/components/Recaptcha";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [stage, setStage] = useState<"credentials" | "code">("credentials");
   const [methods, setMethods] = useState<string[]>([]);
   const [code, setCode] = useState("");
+  const recaptchaRef = useRef<RecaptchaHandle>(null);
 
   async function attempt(withCode?: string) {
     setError(null);
@@ -21,6 +23,11 @@ export default function LoginPage() {
     try {
       const body: LoginIn = { email, password };
       if (withCode) body.code = withCode;
+      else {
+        // reCAPTCHA only on the first (credentials) step.
+        const token = await recaptchaRef.current?.execute();
+        if (token) body.recaptcha_token = token;
+      }
       const r = await api<LoginOut>("/api/auth/super-admin/login", {
         method: "POST",
         body: JSON.stringify(body),
@@ -109,6 +116,7 @@ export default function LoginPage() {
             </p>
           </div>
         )}
+        {stage === "credentials" && <Recaptcha ref={recaptchaRef} gateway={GATEWAY} action="login" />}
         {error && (
           <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}

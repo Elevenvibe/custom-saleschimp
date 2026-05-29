@@ -9,6 +9,7 @@ class SignupIn(BaseModel):
     password: str = Field(min_length=8)
     full_name: str = Field(min_length=1, max_length=128)
     company_name: str = Field(min_length=1, max_length=128)
+    recaptcha_token: str | None = None
 
     company_size: str | None = Field(default=None, max_length=32)
     role_title: str | None = Field(default=None, max_length=64)
