@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.service import decode_token
-from app.customer_auth.deps import require_customer
+from app.customer_auth.deps import _claims_from_request
 from app.db import SessionLocal, get_session
 from app.tenants.models import Tenant, TenantMember
 
@@ -56,10 +56,18 @@ class SuspensionInfoOut(BaseModel):
 
 @router.get("/suspension-info", response_model=SuspensionInfoOut)
 async def suspension_info(
-    claims: Annotated[dict, Depends(require_customer)],
+    claims: Annotated[dict, Depends(_claims_from_request)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuspensionInfoOut:
-    """Context for the /suspended page. Reachable while suspended."""
+    """Context for the /suspended page + the Dograh-UI suspension probe.
+
+    Uses a plain token-decode (not require_customer) so it accepts BOTH
+    the gateway-minted sc_console_token AND the raw dograh_auth_token —
+    both carry sub=<dograh_user_id>, which is all we need to resolve the
+    tenant. require_customer would 403 the raw Dograh token (no
+    tenant_kind claim), which is exactly what broke the Dograh-side
+    enforcement + poller.
+    """
     sub = claims.get("sub", "")
     try:
         dograh_user_id = int(sub)

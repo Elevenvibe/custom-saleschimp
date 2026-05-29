@@ -88,7 +88,21 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# CORS for cross-origin browser apps (admin UI + customer app).
+# Suspension enforcement — blocks suspended tenants from non-allowlisted
+# /api/tenant/* routes (allowlist keeps me/tickets/suspension-info open so
+# the /suspended page + support reply still work).
+#
+# ORDER MATTERS: Starlette runs the LAST-added middleware OUTERMOST. We
+# register this FIRST so CORS (added after) ends up outermost and wraps
+# this middleware's 403 response with Access-Control-Allow-Origin —
+# otherwise the browser sees a header-less cross-origin 403 and reports
+# "Failed to fetch" instead of letting the console read the
+# {code:'tenant_suspended'} body and redirect to /suspended.
+app.middleware("http")(suspension_middleware)
+
+# CORS for cross-origin browser apps (admin UI + customer app). Added
+# LAST → outermost → its headers cover every response, including the
+# suspension middleware's 403 and any error.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
@@ -96,12 +110,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Suspension enforcement — blocks suspended tenants from non-allowlisted
-# /api/tenant/* routes (allowlist keeps me/tickets/suspension-info open so
-# the /suspended page + support reply still work). Registered after CORS so
-# preflight OPTIONS still get their headers.
-app.middleware("http")(suspension_middleware)
 
 # Gateway-owned routes. Mount BEFORE the catch-all proxy.
 app.include_router(auth_router, prefix="/api/auth")
