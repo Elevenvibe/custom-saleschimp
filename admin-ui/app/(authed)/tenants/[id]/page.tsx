@@ -498,6 +498,7 @@ function SuspendDialog({
 }) {
   const [subject, setSubject] = useState<string>("");
   const [reason, setReason] = useState("");
+  const [mode, setMode] = useState<"delayed" | "kill_live">("delayed");
   const [busy, setBusy] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -536,7 +537,7 @@ function SuspendDialog({
     try {
       await api(`/api/admin/tenants/${tenantId}/suspend`, {
         method: "POST",
-        body: JSON.stringify({ subject, reason: reason || null }),
+        body: JSON.stringify({ subject, reason: reason || null, mode }),
       });
       onSuspended();
     } catch (e) {
@@ -571,6 +572,23 @@ function SuspendDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <Label>Enforcement</Label>
+            <Select value={mode} onValueChange={(v) => setMode(v as "delayed" | "kill_live")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="delayed">Delayed — block on next visit/refresh</SelectItem>
+                <SelectItem value="kill_live">Kill live — sign out now, all Dograh services</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {mode === "kill_live"
+                ? "Open sessions are terminated within ~15s and the user is signed out of every Dograh service."
+                : "Already-open tabs keep their current view until they navigate or call the API."}
+            </p>
           </div>
           <div>
             <div className="flex items-center justify-between">

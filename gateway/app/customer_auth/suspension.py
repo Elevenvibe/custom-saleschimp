@@ -45,6 +45,7 @@ _ALLOW_WHILE_SUSPENDED = (
 class SuspensionInfoOut(BaseModel):
     status: str
     suspended: bool
+    mode: str  # delayed | kill_live
     subject: str | None
     reason: str | None
     suspended_at: str | None
@@ -77,6 +78,7 @@ async def suspension_info(
     return SuspensionInfoOut(
         status=tenant.status,
         suspended=tenant.status == "suspended",
+        mode=tenant.suspension_mode or "delayed",
         subject=tenant.suspension_subject,
         reason=tenant.suspension_reason,
         suspended_at=tenant.suspended_at.isoformat() if tenant.suspended_at else None,

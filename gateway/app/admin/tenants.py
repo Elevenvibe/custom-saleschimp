@@ -313,6 +313,8 @@ async def update_tenant_status(
 class SuspendIn(BaseModel):
     subject: str
     reason: str | None = None
+    # delayed = block on next visit; kill_live = boot open sessions now.
+    mode: str = "delayed"
 
 
 class DraftIn(BaseModel):
@@ -346,6 +348,8 @@ async def suspend_tenant(
     suspension middleware blocks the tenant's next request."""
     if body.subject not in SUSPENSION_SUBJECTS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown suspension subject")
+    if body.mode not in ("delayed", "kill_live"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "mode must be delayed or kill_live")
     tenant = await session.get(Tenant, tenant_id)
     if tenant is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
@@ -382,6 +386,7 @@ async def suspend_tenant(
     tenant.suspension_subject = body.subject
     tenant.suspension_reason = notice
     tenant.suspension_ticket_id = ticket.id
+    tenant.suspension_mode = body.mode
 
     await record_audit(
         session,
@@ -390,7 +395,7 @@ async def suspend_tenant(
         action="admin.tenant.suspend",
         target_kind="tenant",
         target_id=str(tenant.id),
-        payload={"subject": body.subject, "ticket_id": ticket.id, "reason": body.reason},
+        payload={"subject": body.subject, "ticket_id": ticket.id, "reason": body.reason, "mode": body.mode},
     )
     await session.commit()
     await notify_best_effort(
@@ -423,6 +428,7 @@ async def unsuspend_tenant(
     tenant.suspension_subject = None
     tenant.suspension_reason = None
     tenant.suspension_ticket_id = None
+    tenant.suspension_mode = "delayed"
 
     if ticket_id is not None:
         ticket = await session.get(SupportTicket, ticket_id)

@@ -45,6 +45,8 @@ import { usePathname, useRouter } from "next/navigation";
 import React, { useRef } from "react";
 
 import ThemeToggle from "@/components/ThemeSwitcher";
+// [saleschimp-overlay] kill-live suspension poller (renders nothing).
+import { SuspensionWatcher } from "@/components/SuspensionWatcher";
 import { Button } from "@/components/ui/button";
 // [saleschimp-overlay] breadcrumb is supplied by the overlay itself
 // (console/dograh-overlay/components/ui/breadcrumb.tsx) — Dograh upstream
@@ -336,6 +338,8 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" variant="inset" className="bg-sidebar">
+      {/* [saleschimp-overlay] kill-live suspension poller (renders nothing). */}
+      <SuspensionWatcher />
       <SidebarHeader className="px-1 py-2 notranslate" translate="no">
         {/* [saleschimp-overlay] sidebar-08 brand pattern — square icon box +
             label, properly aligned (replaces the old breadcrumb crumb which
