@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     # Public URL of the gateway (where the API + reverse proxy live).
     public_base_url: str = "http://localhost:8080"
 
+    # Public URL of the super-admin UI (admin-ui, port 3020). Used as the
+    # post-OAuth redirect target for platform-audience social login.
+    admin_app_url: str = "http://localhost:3020"
+
     # Public URL of the customer-facing surface. Verification, invite, and
     # password-reset links emailed to customers point here. Now points at
     # the unified nginx-fronted URL with the /console basePath; the public

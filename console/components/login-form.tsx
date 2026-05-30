@@ -21,6 +21,7 @@ import { useRef } from "react";
 
 import { api, ApiError, GATEWAY, type LoginOut, setToken } from "@/lib/api";
 import { Recaptcha, type RecaptchaHandle } from "@/components/Recaptcha";
+import { SocialButtons } from "@/components/SocialButtons";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -114,6 +115,7 @@ export function LoginForm({
                   {busy ? "Signing in…" : "Sign in"}
                 </Button>
               </Field>
+              <SocialButtons redirectTo="/" onError={setError} />
               <FieldDescription className="text-center">
                 Don&apos;t have an account?{" "}
                 <Link href="/signup" className="underline">

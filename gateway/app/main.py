@@ -24,6 +24,7 @@ from app.auth.bootstrap import bootstrap_super_admin_if_needed
 from app.billing.cron import start_price_sync_loop, stop_price_sync_loop
 from app.customer_auth.bootstrap import bootstrap_demo_tenant_if_needed
 from app.auth.routes import router as auth_router
+from app.auth.social_routes import router as social_auth_router
 from app.config import settings
 from app.customer_auth.invites import public_router as invites_public_router
 from app.customer_auth.marketplace import router as customer_marketplace_router
@@ -114,6 +115,7 @@ app.add_middleware(
 
 # Gateway-owned routes. Mount BEFORE the catch-all proxy.
 app.include_router(auth_router, prefix="/api/auth")
+app.include_router(social_auth_router, prefix="/api/auth")
 app.include_router(customer_auth_router, prefix="/api/auth")
 app.include_router(customer_login_router, prefix="/api/auth")
 app.include_router(invites_public_router, prefix="/api/auth")

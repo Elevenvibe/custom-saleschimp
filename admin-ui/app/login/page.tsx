@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError, GATEWAY, setToken, type LoginIn, type LoginOut } from "@/lib/api";
 import { Recaptcha, type RecaptchaHandle } from "@/components/Recaptcha";
+import { SocialButtons } from "@/components/SocialButtons";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -123,6 +124,9 @@ export default function LoginPage() {
         <button type="submit" className="btn-primary w-full" disabled={busy}>
           {busy ? "Signing in…" : stage === "code" ? "Verify & sign in" : "Sign in"}
         </button>
+        {stage === "credentials" && (
+          <SocialButtons audience="platform" redirectTo="/dashboard" onError={setError} />
+        )}
         {stage === "code" && (
           <button
             type="button"
