@@ -51,6 +51,8 @@ from app.customer_auth.routes import router as customer_auth_router
 from app.customer_auth.payments import router as customer_payments_router
 from app.customer_auth.wallet import router as customer_wallet_router
 from app.fx.cron import start_fx_fetcher_loop, stop_fx_fetcher_loop
+from app.seed.cron import start_seed_loops, stop_seed_loops
+from app.seed.lockdown import demo_lockdown_middleware
 from app.payments.cron import start_auto_reload_loop, stop_auto_reload_loop
 from app.payments.webhooks import router as payments_webhook_router
 from app.wallet.ingest import start_usage_ingest_loop, stop_usage_ingest_loop
@@ -71,7 +73,9 @@ async def lifespan(_: FastAPI):
     await start_auto_reload_loop()
     await start_fx_fetcher_loop()
     await start_mail_fetcher_loop()
+    await start_seed_loops()
     yield
+    await stop_seed_loops()
     await stop_mail_fetcher_loop()
     await stop_fx_fetcher_loop()
     await stop_auto_reload_loop()
@@ -103,6 +107,12 @@ async def healthz() -> dict[str, str]:
 # "Failed to fetch" instead of letting the console read the
 # {code:'tenant_suspended'} body and redirect to /suspended.
 app.middleware("http")(suspension_middleware)
+
+# Demo CRUD lockdown — 403s mutations on the demo tenant when CRUD is off.
+# Registered AFTER suspension (so suspension is outermost between the two,
+# and a suspended demo tenant still hits the suspended page), BEFORE CORS
+# (so CORS wraps the 403 response with the right headers — same reasoning).
+app.middleware("http")(demo_lockdown_middleware)
 
 # CORS for cross-origin browser apps (admin UI + customer app). Added
 # LAST → outermost → its headers cover every response, including the

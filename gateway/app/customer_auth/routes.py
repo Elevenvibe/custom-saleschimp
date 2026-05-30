@@ -216,6 +216,15 @@ async def verify(
     )
     await session.commit()
 
+    # Apply seed defaults onto the freshly-active tenant (best-effort: a
+    # seed failure must not block account access). See app/seed/service.py.
+    try:
+        from app.seed.service import seed_new_tenant
+
+        await seed_new_tenant(session, tenant.id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("seed.apply_on_verify_failed", tenant_id=tenant.id, error=str(e))
+
     log.info(
         "signup.verified",
         tenant_id=tenant.id,
