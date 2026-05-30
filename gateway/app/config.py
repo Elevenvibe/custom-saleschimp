@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     # post-OAuth redirect target for platform-audience social login.
     admin_app_url: str = "http://localhost:3020"
 
+    # Shared secret for service-to-service calls from Dograh into the gateway
+    # (e.g. an agent tool fetching a tenant's live Google token by org_id).
+    # Sent as the X-Internal-Token header. Override in production.
+    internal_api_token: str = "changeme-internal-dev"
+
     # Public URL of the customer-facing surface. Verification, invite, and
     # password-reset links emailed to customers point here. Now points at
     # the unified nginx-fronted URL with the /console basePath; the public
