@@ -26,6 +26,7 @@ from app.admin.storage_settings import router as storage_settings_router
 from app.admin.custom_fields import router as custom_fields_router
 from app.admin.social_settings import router as social_settings_router
 from app.admin.integrations import router as integrations_router
+from app.admin.finance import router as finance_router
 from app.mailbox.mail_routes import admin_router as mail_admin_router
 from app.mailbox.routes import admin_router as mailbox_admin_router
 from app.tickets.routes import admin_router as tickets_admin_router
@@ -61,3 +62,4 @@ router.include_router(storage_settings_router)
 router.include_router(custom_fields_router)
 router.include_router(social_settings_router)
 router.include_router(integrations_router)
+router.include_router(finance_router)
