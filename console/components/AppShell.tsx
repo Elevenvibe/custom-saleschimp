@@ -20,6 +20,7 @@ import {
   CreditCard,
   LayoutDashboard,
   LogOut,
+  Plug,
   Sparkles,
   Wallet,
 } from "lucide-react";
@@ -55,6 +56,7 @@ const NAV: NavSection[] = [
     label: "EXTEND",
     items: [
       { title: "Marketplace", href: "/marketplace", icon: <Boxes className="size-4" /> },
+      { title: "Integrations", href: "/integrations", icon: <Plug className="size-4" /> },
     ],
   },
 ];

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
-import { ArrowLeftRight, Bell, Clock, CreditCard, DollarSign, HardDrive, KeyRound, ListPlus, LogIn, Lock, Mail, ShieldCheck, User } from "lucide-react";
+import { ArrowLeftRight, Bell, Clock, CreditCard, DollarSign, HardDrive, KeyRound, ListPlus, LogIn, Lock, Mail, Plug, ShieldCheck, User } from "lucide-react";
 
 const SETTINGS_NAV = [
   { href: "/settings/profile", label: "Profile", icon: User },
@@ -14,6 +14,7 @@ const SETTINGS_NAV = [
   { href: "/settings/finance", label: "Finance", icon: DollarSign },
   { href: "/settings/custom-fields", label: "Custom fields", icon: ListPlus },
   { href: "/settings/social-login", label: "Social login", icon: LogIn },
+  { href: "/settings/integrations", label: "Integrations", icon: Plug },
   { href: "/settings/cronjob", label: "Cronjob", icon: Clock },
   { href: "/settings/provider-api-keys", label: "Provider API keys", icon: KeyRound },
   { href: "/settings/email-providers", label: "Email providers", icon: Mail },
