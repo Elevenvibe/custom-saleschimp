@@ -8,8 +8,25 @@ the org's responsibility for tenant-scoped configs.
 from typing import Any
 
 import httpx
+import structlog
 
 from app.email.providers.base import MailProvider, OutgoingMail, SendResult
+
+log = structlog.get_logger()
+
+# Postmark ErrorCodes worth naming in logs so the fix is obvious.
+# https://postmarkapp.com/developer/api/overview#error-codes
+_ERROR_HINTS = {
+    300: "invalid email request (check From/To formatting)",
+    400: "sender signature not found",
+    401: "sender signature not confirmed",
+    402: "invalid JSON",
+    403: "incompatible JSON",
+    405: "not allowed to send (account pending review)",
+    406: "inactive recipient",
+    412: "account is pending approval",
+    300412: "from address not a confirmed sender signature/domain",
+}
 
 
 class PostmarkProvider(MailProvider):
@@ -60,7 +77,25 @@ class PostmarkProvider(MailProvider):
                     "X-Postmark-Server-Token": self._server_token,
                 },
             )
-            r.raise_for_status()
+            if r.status_code >= 300:
+                # Postmark returns {"ErrorCode": N, "Message": "..."} on
+                # failure. Surface it before raising so the actual cause
+                # (e.g. unverified sender signature) is visible in logs.
+                detail: dict[str, Any] = {}
+                try:
+                    detail = r.json()
+                except Exception:  # noqa: BLE001
+                    detail = {"raw": r.text[:300]}
+                code = detail.get("ErrorCode")
+                log.warning(
+                    "postmark.send_failed",
+                    status=r.status_code,
+                    error_code=code,
+                    hint=_ERROR_HINTS.get(code, ""),
+                    message=detail.get("Message"),
+                    from_=self._from,
+                )
+                r.raise_for_status()
             data = r.json()
 
         return SendResult(

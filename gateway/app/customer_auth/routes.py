@@ -80,9 +80,26 @@ async def signup(
             message="If that email is new, a verification link is on its way.",
         )
 
-    await send_verification_email(
-        session, tenant=tenant, full_name=body.full_name
-    )
+    # Verification email is best-effort. A provider failure (e.g. an
+    # unverified Postmark sender signature, a 422) must NOT 500 the signup —
+    # the tenant row is created and the link can be re-sent (or a super-admin
+    # can force-verify via complete-signup). We record whether it went out so
+    # the audit log + response reflect reality.
+    email_sent = True
+    email_error: str | None = None
+    try:
+        await send_verification_email(
+            session, tenant=tenant, full_name=body.full_name
+        )
+    except Exception as e:  # noqa: BLE001 — delivery is non-critical to signup
+        email_sent = False
+        email_error = str(e)
+        log.warning(
+            "signup.verification_email_failed",
+            tenant_id=tenant.id,
+            email=email,
+            error=email_error,
+        )
     await record_audit(
         session,
         actor_kind="system",
@@ -90,7 +107,7 @@ async def signup(
         target_kind="tenant",
         target_id=str(tenant.id),
         request=request,
-        payload={"email": email, "company": body.company_name},
+        payload={"email": email, "company": body.company_name, "email_sent": email_sent},
     )
     # Bell the platform team about the new signup (best-effort, routed).
     try:
@@ -107,11 +124,16 @@ async def signup(
         pass
     await session.commit()
 
-    log.info("signup.created", tenant_id=tenant.id, email=email)
+    log.info("signup.created", tenant_id=tenant.id, email=email, email_sent=email_sent)
     return SignupOut(
         tenant_id=tenant.id,
         status=tenant.status,
-        message="Check your inbox for a verification link.",
+        message=(
+            "Check your inbox for a verification link."
+            if email_sent
+            else "Account created. The verification email couldn't be sent right "
+            "now — please contact support to verify your account."
+        ),
     )
 
 
