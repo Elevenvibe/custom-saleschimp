@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CustomFields } from "@/components/CustomFields";
 import Link from "next/link";
 import { KeyRound, Send, Trash2, Wallet } from "lucide-react";
 
@@ -780,6 +781,10 @@ function ProfileTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void }
           </Button>
         </div>
       </section>
+
+      {/* Admin-designed custom fields for the 'tenant' placement. Renders
+          nothing when no active tenant fields are defined. */}
+      <CustomFields entity="tenant" entityId={tenant.id} />
     </div>
   );
 }
