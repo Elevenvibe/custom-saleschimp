@@ -34,6 +34,9 @@ class Tenant(Base):
     state: Mapped[str | None] = mapped_column(String(120), nullable=True)
     zip_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     about: Mapped[str | None] = mapped_column(String, nullable=True)
+    # JSONB grab-bag for the redesigned tenant settings page — app prefs,
+    # currency choice, notification overrides. Migration 0030.
+    tenant_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     # Tenant-side cap on concurrent calls. NULL → use package default; ints
     # are validated against the package's concurrency_included in the service
     # layer so a tenant can only dial DOWN their own ceiling.
