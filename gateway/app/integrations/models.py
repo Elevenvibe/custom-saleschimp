@@ -10,6 +10,8 @@ contacts       contacts imported from a linked source (Google today), tagged
 
 from datetime import datetime
 
+from typing import Any
+
 from sqlalchemy import (
     BigInteger,
     DateTime,
@@ -20,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -34,9 +37,10 @@ class GoogleLink(Base):
         BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     google_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Fernet-encrypted token JSON ({"secret": <token>}).
-    access_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
-    refresh_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Fernet-encrypted token, stored in the encrypt_dict shape ({"_enc": ...})
+    # as JSONB — matches how every other secret is persisted.
+    access_token_enc: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    refresh_token_enc: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

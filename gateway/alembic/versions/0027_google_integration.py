@@ -13,6 +13,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0027_google_integration"
 down_revision: Union[str, None] = "0026_custom_fields"
@@ -31,8 +32,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("google_email", sa.String(length=255), nullable=True),
-        sa.Column("access_token_enc", sa.Text(), nullable=True),
-        sa.Column("refresh_token_enc", sa.Text(), nullable=True),
+        sa.Column("access_token_enc", postgresql.JSONB(), nullable=True),
+        sa.Column("refresh_token_enc", postgresql.JSONB(), nullable=True),
         sa.Column("token_expiry", sa.DateTime(timezone=True), nullable=True),
         sa.Column("scopes", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
