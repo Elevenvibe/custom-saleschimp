@@ -94,10 +94,9 @@
     @apply border-border outline-ring/50;
   }
   html {
-    /* Match Dograh's base size so type renders identically across the
-       unified URL. 16px is the browser default; pin it so a host page
-       can't shrink our rems. */
-    font-size: 16px;
+    /* Console base type is one step above the 16px browser default so the
+       custom modules read a touch larger than Dograh's chrome. */
+    font-size: 17px;
   }
   body {
     @apply bg-background text-foreground antialiased;

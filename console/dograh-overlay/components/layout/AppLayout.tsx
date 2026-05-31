@@ -16,7 +16,7 @@
 // AppLayout.tsx, diff it against this file and re-apply the AppHeader
 // redesign onto the new upstream base.
 
-import { Bell } from "lucide-react";
+import { Bell, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { ReactNode } from "react";
@@ -37,14 +37,49 @@ import {
 
 import { AppSidebar } from "./AppSidebar";
 
+// [saleschimp-overlay] Build a {crumbs, title} from the current path so the
+// header shows the page the user is on instead of a static brand wordmark.
+// Numeric / long-hex segments (workflow ids, run ids) collapse to "Detail".
+function titleCase(seg: string): string {
+  return seg.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function crumbsFromPath(pathname: string): { label: string; href: string }[] {
+  const parts = pathname.split("/").filter(Boolean);
+  const out: { label: string; href: string }[] = [];
+  let href = "";
+  for (const p of parts) {
+    href += `/${p}`;
+    // Skip the basePath segment + opaque ids in the visible trail.
+    if (p === "console") continue;
+    const isId = /^[0-9]+$/.test(p) || /^[0-9a-f]{8,}$/i.test(p);
+    out.push({ label: isId ? "Detail" : titleCase(p), href });
+  }
+  return out.length ? out : [{ label: "Dashboard", href: "/" }];
+}
+
 function AppHeader() {
+  const pathname = usePathname() || "/";
+  const crumbs = crumbsFromPath(pathname);
+  const title = crumbs[crumbs.length - 1].label;
+  const parents = crumbs.slice(0, -1);
   return (
     <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-2 h-4" />
-      <Link href="/" className="text-sm font-semibold">
-        SalesChimp
-      </Link>
+      <div className="min-w-0">
+        {parents.length > 0 && (
+          <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-muted-foreground">
+            {parents.map((c, i) => (
+              <span key={`${c.href}-${i}`} className="flex items-center gap-1">
+                <Link href={c.href} className="hover:underline">{c.label}</Link>
+                <ChevronRight className="h-3 w-3" />
+              </span>
+            ))}
+            <span className="text-foreground">{title}</span>
+          </nav>
+        )}
+        <h1 className="truncate text-sm font-semibold leading-tight">{title}</h1>
+      </div>
 
       <div className="ml-auto flex items-center gap-2">
         {/* [saleschimp-overlay] Notification bell replaces the old
