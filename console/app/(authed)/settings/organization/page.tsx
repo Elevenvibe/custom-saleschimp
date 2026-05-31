@@ -26,6 +26,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api, ApiError, GATEWAY, getToken, type OrgSettings } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,9 +64,9 @@ export default function OrgSettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-10 space-y-8">
+      <PageHeader title="Organization" parents={[{ label: "Settings", href: "/settings" }]} />
       <header>
-        <h1 className="text-2xl font-semibold">Organization Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Manage {data.name}.
         </p>
       </header>

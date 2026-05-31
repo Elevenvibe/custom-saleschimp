@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,9 +39,9 @@ export default function CurrencyPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8">
+      <PageHeader title="Currency" parents={[{ label: "Settings", href: "/settings" }]} />
       <header>
-        <h1 className="text-xl font-semibold">Currency</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           The currency the AI agent quotes in. When applied, it overrides the
           default on invoices, leads, and client records.
         </p>

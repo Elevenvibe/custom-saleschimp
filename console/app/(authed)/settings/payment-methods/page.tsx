@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, CreditCard } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,9 +55,9 @@ export default function PaymentMethodsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8">
+      <PageHeader title="Payment methods" parents={[{ label: "Settings", href: "/settings" }]} />
       <header>
-        <h1 className="text-xl font-semibold">Payment methods</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           BYOK — bring your own keys. Connect any of the providers below to take
           payments under your own merchant accounts. Secrets are stored
           encrypted and never returned to the UI.

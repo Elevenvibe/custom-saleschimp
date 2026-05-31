@@ -17,6 +17,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   Boxes,
+  ChevronRight,
   CreditCard,
   LayoutDashboard,
   LogOut,
@@ -28,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { setToken, type SessionExchangeOut } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
+import { PageTitleProvider, usePageTitle } from "@/components/PageHeader";
 
 type NavItem = { title: string; href: string; icon: ReactNode };
 
@@ -111,16 +113,15 @@ export function AppShell({
   }
 
   return (
+    <PageTitleProvider>
     <div className="flex min-h-screen">
-      <aside className="w-60 shrink-0 border-r border-[color:var(--border)] bg-[color:var(--card)] flex flex-col">
+      {/* Sidebar is static: sticky to the viewport and the same width on
+          every page. Internal scroll only when its own contents overflow. */}
+      <aside className="sticky top-0 z-30 h-screen w-60 shrink-0 border-r border-[color:var(--border)] bg-[color:var(--card)] flex flex-col">
         <div className="px-4 py-4 border-b border-[color:var(--border)]">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-[color:var(--primary)] text-[color:var(--primary-foreground)]">
-              <Sparkles className="size-4" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold">SalesChimp</div>
-              <div className="text-[10px] uppercase tracking-wide text-[color:var(--muted-foreground)]">Console</div>
+          <Link href="/" className="flex items-center justify-center" aria-label="Home">
+            <div className="flex aspect-square size-9 items-center justify-center rounded-md bg-[color:var(--primary)] text-[color:var(--primary-foreground)]">
+              <Sparkles className="size-5" />
             </div>
           </Link>
         </div>
@@ -180,11 +181,51 @@ export function AppShell({
       </aside>
 
       <div className="flex flex-1 min-w-0 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-end gap-2 border-b border-[color:var(--border)] bg-[color:var(--background)] px-4">
-          <NotificationBell />
-        </header>
+        <TopBar />
         <main className="flex-1 min-w-0 bg-[color:var(--background)]">{children}</main>
       </div>
     </div>
+    </PageTitleProvider>
+  );
+}
+
+/** Title-case a path segment: "time-log" → "Time Log", "" → "Dashboard". */
+function fallbackTitle(pathname: string): string {
+  const seg = pathname.split("/").filter(Boolean).pop();
+  if (!seg) return "Dashboard";
+  return seg
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Header bar: page title + auto-derived breadcrumb on the left, bell on
+ *  the right. Reads the title pushed by <PageHeader> from each page, falling
+ *  back to a pathname-derived title for pages that don't set one. */
+function TopBar() {
+  const { title: pushed, parents } = usePageTitle();
+  const pathname = usePathname();
+  const title = pushed || fallbackTitle(pathname);
+  return (
+    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[color:var(--border)] bg-[color:var(--background)] px-5">
+      <div className="min-w-0 flex-1">
+        {parents.length > 0 && (
+          <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-[color:var(--muted-foreground)]">
+            {parents.map((p, i) => (
+              <span key={`${p.label}-${i}`} className="flex items-center gap-1">
+                {p.href ? (
+                  <Link href={p.href} className="hover:underline">{p.label}</Link>
+                ) : (
+                  <span>{p.label}</span>
+                )}
+                <ChevronRight className="size-3" />
+              </span>
+            ))}
+            <span className="text-[color:var(--foreground)]">{title}</span>
+          </nav>
+        )}
+        <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+      </div>
+      <NotificationBell />
+    </header>
   );
 }

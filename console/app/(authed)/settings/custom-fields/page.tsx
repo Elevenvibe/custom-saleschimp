@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,9 +62,9 @@ export default function CustomFieldsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8">
+      <PageHeader title="Custom fields" parents={[{ label: "Settings", href: "/settings" }]} />
       <header>
-        <h1 className="text-xl font-semibold">Custom fields</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Extra fields your platform administrator added to your organization record. Fill them in to keep them aligned with your team.
         </p>
       </header>

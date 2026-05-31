@@ -1,29 +1,32 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 
 import "./globals.css";
+
+// Match Dograh exactly — it also loads Geist / Geist Mono via next/font so
+// the unified URL (Dograh + console behind one nginx origin) renders one
+// consistent typeface at the same size.
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "SalesChimp Console",
   description: "Billing, plans, and marketplace for SalesChimp tenants.",
 };
 
-/**
- * Root layout for the console sidecar.
- *
- * We deliberately keep this stripped down — no providers, no auth wrapper,
- * no sidebar. Those come in the next iteration once nginx fronts both Dograh
- * and console at one origin and we can read Dograh's auth cookie from here.
- *
- * For Step A (this iteration) the only thing we need to prove is that
- * `localhost:3040/console` returns a working page from our container.
- */
 export default function ConsoleRootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="min-h-screen antialiased">{children}</body>
     </html>
   );

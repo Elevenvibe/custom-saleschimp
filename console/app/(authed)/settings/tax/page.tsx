@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pencil, Plus, Star, Trash2 } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,10 +52,10 @@ export default function TaxPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8">
+      <PageHeader title="Tax" parents={[{ label: "Settings", href: "/settings" }]} />
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Tax</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Tax rates applied to invoices, quotes, and AI agent transactions.</p>
+          <p className="text-sm text-muted-foreground">Tax rates applied to invoices, quotes, and AI agent transactions.</p>
         </div>
         <Button onClick={() => setCreating(true)}><Plus className="size-4" /> Add tax rate</Button>
       </header>

@@ -7,6 +7,8 @@
 
 import { Sparkles } from "lucide-react";
 
+import { PageHeader } from "@/components/PageHeader";
+
 export function ComingSoon({
   title,
   description,
@@ -18,9 +20,9 @@ export function ComingSoon({
 }) {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8">
+      <PageHeader title={title} parents={[{ label: "Settings", href: "/settings" }]} />
       <header>
-        <h1 className="text-xl font-semibold">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </header>
 
       {tabs && tabs.length > 0 && (

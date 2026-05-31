@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,9 +61,9 @@ export default function AppSettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8">
+      <PageHeader title="App settings" parents={[{ label: "Settings", href: "/settings" }]} />
       <header>
-        <h1 className="text-xl font-semibold">App settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Workspace defaults applied across your dashboards, tables and exports.
         </p>
       </header>
